@@ -5,6 +5,7 @@
 #include <core/log.h>
 #include <core/string.h>
 #include <drivers/keyboard/keyboard.h>
+#include <fs/poll.h>
 #include <fs/vfs.h>
 
 static int64_t console_write(struct file *file, const void *buffer, size_t size)
@@ -32,9 +33,18 @@ static int64_t console_read(struct file *file, void *buffer, size_t size)
     }
 }
 
+static unsigned console_poll(struct file *file)
+{
+    (void)file;
+    /* An approximation: a queued event may turn out to be a key release,
+     * for which read() keeps waiting. Good enough for "is someone typing". */
+    return keyboard_has_event() ? SD_POLL_IN : 0;
+}
+
 static const struct file_ops console_ops = {
     .read = console_read,
     .write = console_write,
+    .poll = console_poll,
 };
 
 struct device {
@@ -116,5 +126,7 @@ static const struct filesystem devfs = {
 
 const struct filesystem *devfs_filesystem(void)
 {
+    /* Pollers of the console must hear about new input. */
+    keyboard_set_listener(poll_notify);
     return &devfs;
 }

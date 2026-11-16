@@ -29,6 +29,16 @@ enum {
     SYS_SLEEP_MS,   /* (uint64_t milliseconds)                  -> 0 */
     SYS_YIELD,      /* ()                                       -> 0 */
     SYS_UPTIME_MS,  /* ()                                       -> milliseconds since boot */
+    SYS_FSTAT,      /* (int fd, struct sd_stat *out)            -> 0 */
+    SYS_POLL,       /* (struct sd_pollfd *fds, size_t n, int64_t timeout_ms) -> number ready */
+    SYS_CHANNEL_CREATE, /* (int fds[2])                         -> 0 */
+    SYS_PORT_CREATE,    /* (const char *name)                   -> fd */
+    SYS_PORT_ACCEPT,    /* (int port_fd)                        -> channel fd */
+    SYS_PORT_CONNECT,   /* (const char *name)                   -> channel fd */
+    SYS_SEND,       /* (int fd, const void *msg, size_t n, int handle_fd) -> 0 */
+    SYS_RECV,       /* (int fd, void *buf, size_t capacity, int *handle_fd) -> message size, 0 if closed */
+    SYS_SHM_CREATE, /* (size_t size)                            -> fd */
+    SYS_SHM_MAP,    /* (int fd)                                 -> address */
     SYS_COUNT
 };
 
@@ -40,6 +50,9 @@ enum {
 #define SD_TYPE_FILE      1
 #define SD_TYPE_DIRECTORY 2
 #define SD_TYPE_DEVICE    3
+#define SD_TYPE_CHANNEL   4 /* one end of a message channel */
+#define SD_TYPE_PORT      5 /* a named port accepting connections */
+#define SD_TYPE_SHM       6 /* a shared memory object */
 
 struct sd_stat {
     uint32_t type; /* SD_TYPE_* */
@@ -58,6 +71,32 @@ struct sd_dirent {
 #define SD_PATH_MAX 255
 #define SD_ARG_MAX  16  /* arguments per program */
 #define SD_ARG_LENGTH_MAX 255
+
+/*
+ * SYS_POLL waits until one of several descriptors is ready. For each entry
+ * the caller sets `fd` and the `events` it is interested in; the kernel
+ * fills in `revents`. A timeout of 0 only checks; a negative one waits
+ * forever.
+ */
+#define SD_POLL_IN  (1u << 0) /* a read, receive or accept will not block */
+#define SD_POLL_HUP (1u << 1) /* the other end is gone (always reported) */
+
+struct sd_pollfd {
+    int32_t fd;
+    uint16_t events;
+    uint16_t revents;
+};
+
+#define SD_POLL_MAX 64 /* descriptors per call */
+
+/* Message channels. */
+#define SD_MESSAGE_MAX 4096     /* bytes per message */
+#define SD_CHANNEL_QUEUE_MAX 64 /* messages waiting in one direction */
+#define SD_PORT_NAME_MAX 31
+#define SD_NO_HANDLE (-1)       /* "no descriptor attached" for SYS_SEND / SYS_RECV */
+
+/* Largest shared memory object. */
+#define SD_SHM_MAX_SIZE (64u << 20)
 
 /* Exit code of a process the kernel ended because of a CPU exception:
  * SD_EXIT_FAULT_BASE + exception vector (14 = page fault). */

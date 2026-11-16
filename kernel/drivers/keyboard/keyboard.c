@@ -72,6 +72,8 @@ static size_t queue_count;
 static uint8_t modifiers;
 /* Threads blocked in keyboard_wait_event(). Initialised statically because
  * the interrupt handler may use it before any thread does. */
+/* Written once during boot. */
+static void (*event_listener)(void);
 static struct wait_queue readers = { .waiters = { &readers.waiters, &readers.waiters } };
 
 const char *keyboard_key_name(enum key_code code)
@@ -159,6 +161,24 @@ void keyboard_report(enum key_code code, bool pressed)
     }
 
     spinlock_release(&lock, irq_state);
+
+    /* Outside the lock: the listener may take locks of its own. */
+    if (event_listener != NULL) {
+        event_listener();
+    }
+}
+
+void keyboard_set_listener(void (*listener)(void))
+{
+    event_listener = listener;
+}
+
+bool keyboard_has_event(void)
+{
+    arch_irq_state_t irq_state = spinlock_acquire(&lock);
+    bool available = queue_count > 0;
+    spinlock_release(&lock, irq_state);
+    return available;
 }
 
 static void pop_event_locked(struct key_event *event)

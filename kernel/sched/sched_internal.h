@@ -33,10 +33,14 @@ struct thread {
     void *fpu_state;                  /* saved floating point registers */
     void *owner;                      /* the process, opaque to the scheduler */
 
-    /* A thread is in at most one queue at a time (run, sleep, wait or reap
-     * queue), so one link serves for all of them. */
+    /* A thread is in at most one of the run, wait and reap queues at a
+     * time, so one link serves for all of them. */
     struct list_node queue_link;
+    /* The sleep queue has its own link: a thread waiting with a timeout is
+     * in a wait queue and in the sleep queue at once. */
+    struct list_node sleep_link;
     uint64_t wake_tick;
+    bool timed_out; /* the last timed wait ended by timeout, not wake-up */
     unsigned slice_ticks_left;
 
     bool detached;
@@ -54,5 +58,7 @@ void sched_make_ready_locked(struct thread *thread);
  * state and queued it wherever it should wait (nowhere if it stays
  * RUNNING: then it is put back in the run queue). */
 void sched_switch_locked(void);
+/* Arranges for `thread` to be made ready after `milliseconds`. */
+void sched_sleep_queue_insert_locked(struct thread *thread, uint64_t milliseconds);
 
 #endif

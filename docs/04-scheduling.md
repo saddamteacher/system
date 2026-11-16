@@ -31,8 +31,9 @@ remaining time slice.
 States: `READY` (in the run queue), `RUNNING`, `BLOCKED` (in a wait queue),
 `SLEEPING` (in the sleep queue), `ZOMBIE` (ended).
 
-A thread is in at most one queue at a time, so a single list link serves the
-run queue, the sleep queue, wait queues and the reap queue.
+A thread is in at most one of the run queue, a wait queue and the reap queue
+at a time, so one list link serves all three. The sleep queue has its own
+link (see timed waits below).
 
 ### Boot and the idle thread
 
@@ -99,6 +100,11 @@ the caller's lock, so a wake-up issued after the condition changes cannot be
 missed. The `while` is required: by the time the woken thread runs, another
 thread may have consumed what it was woken for.
 
+`wait_queue_wait_timeout` additionally puts the thread in the sleep queue,
+through a second list link, so it is in both queues at once. Whichever
+happens first, the wake-up or the deadline, removes it from the other queue;
+the return value says which it was.
+
 `wait_queue_wake_one/all` are safe from interrupt context; the keyboard
 interrupt uses them to wake `keyboard_wait_event`.
 
@@ -118,6 +124,7 @@ interrupt handlers; a mutex when the holder may sleep.
 |---|---|
 | `threads` | three threads that never yield each get about a third of the CPU, in about 10 turns each over 300 ms: preemption works |
 | `sleep` | a 50 ms sleep takes 50-60 ms; three sleepers wake in deadline order |
+| `timed-wait` | a wait ends by timeout on time, by wake-up when that comes first, and a cancelled deadline does not fire later |
 | `mutex` | four threads doing read / yield / write on a counter lose updates without a mutex (500 of 2000 arrive) and none with it |
 | `thread-churn` | 200 threads created and released, half joined and half detached, leave heap, frames and thread count unchanged |
 

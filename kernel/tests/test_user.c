@@ -83,6 +83,44 @@ bool test_user_fault(void)
         && run_program("/test/hello", NULL, 0);
 }
 
+/*
+ * Runs a program twice and requires the second run to leave the kernel's
+ * memory exactly as it found it. The first run is a warm-up: it creates
+ * page tables that are kept for reuse (see test_thread_churn).
+ */
+static bool run_program_leak_checked(const char *path)
+{
+    if (!run_program(path, NULL, 0)) {
+        return false;
+    }
+    thread_sleep_ms(50); /* let the idle thread free ended threads */
+    size_t frames_before = pmm_stats().free_frames;
+    size_t heap_before = heap_stats().used_bytes;
+
+    if (!run_program(path, NULL, 0)) {
+        return false;
+    }
+    thread_sleep_ms(50);
+    size_t frames_after = pmm_stats().free_frames;
+    size_t heap_after = heap_stats().used_bytes;
+    if (frames_after != frames_before || heap_after != heap_before || process_count() != 0) {
+        log_error("user test: %s leaked: frames %zu -> %zu, heap %zu -> %zu, processes %zu", path, frames_before,
+                  frames_after, heap_before, heap_after, process_count());
+        return false;
+    }
+    return true;
+}
+
+bool test_user_ipc(void)
+{
+    return run_program_leak_checked("/test/ipc");
+}
+
+bool test_user_ipc_edge(void)
+{
+    return run_program_leak_checked("/test/ipc-edge");
+}
+
 #define CHURN_ROUNDS 20
 
 static bool churn_once(void)

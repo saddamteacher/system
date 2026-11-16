@@ -35,6 +35,16 @@ bool aspace_map(struct address_space *space, uintptr_t start, size_t pages, unsi
 /* Like aspace_map(), at an address the kernel picks. Returns 0 on failure. */
 uintptr_t aspace_map_anywhere(struct address_space *space, size_t pages, unsigned flags);
 
+/*
+ * Maps frames the caller already owns (shared memory) at an address the
+ * kernel picks, writable. The address space does not take ownership: when
+ * the region is unmapped, or the space destroyed, the frames are left alone
+ * and release(context) is called once instead. Returns 0 on failure, in
+ * which case release is not called.
+ */
+uintptr_t aspace_map_frames(struct address_space *space, const phys_addr_t *frames, size_t pages,
+                            void (*release)(void *context), void *context);
+
 /* Removes a region created by one of the calls above; `start` and `pages`
  * must match it exactly. */
 bool aspace_unmap(struct address_space *space, uintptr_t start, size_t pages);

@@ -154,9 +154,9 @@ tools/check-serial.sh $(1) $(BUILD)/check-$(1).log $(CHECK_TIMEOUT) $(3) $(4) --
 endef
 
 # Tests that only need to report success.
-PASS_TESTS  := printf cmdline bitmap list pmm vmm heap threads sleep mutex thread-churn \
+PASS_TESTS  := printf cmdline bitmap list pmm vmm heap threads sleep mutex timed-wait thread-churn \
                boot user-hello user-syscalls user-files user-malloc user-spawn user-fpu \
-               user-sleep user-fault user-churn
+               user-sleep user-fault user-churn user-ipc user-ipc-edge
 # Tests with their own expectations, written out below.
 OTHER_TESTS := timer keyboard breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
 

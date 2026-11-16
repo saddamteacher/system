@@ -26,6 +26,7 @@ bool test_keyboard(void);
 bool test_threads(void);
 bool test_sleep(void);
 bool test_mutex(void);
+bool test_timed_wait(void);
 bool test_thread_churn(void);
 
 /* test_user.c */
@@ -39,6 +40,8 @@ bool test_user_fpu(void);
 bool test_user_sleep(void);
 bool test_user_fault(void);
 bool test_user_churn(void);
+bool test_user_ipc(void);
+bool test_user_ipc_edge(void);
 
 /* test_traps.c */
 bool test_breakpoint(void);

@@ -53,9 +53,17 @@ bool keyboard_init(void);
  * blocks; safe to call from any context. */
 bool keyboard_read_event(struct key_event *event);
 
+/* True if keyboard_read_event() would return an event. */
+bool keyboard_has_event(void);
+
 /* Like keyboard_read_event(), but sleeps until an event is available.
  * Thread context only. */
 void keyboard_wait_event(struct key_event *event);
+
+/* Installs a function called, in interrupt context, whenever an event was
+ * queued. One listener; set during boot. Lets a higher layer learn about
+ * input without the driver depending on it. */
+void keyboard_set_listener(void (*listener)(void));
 
 /* For hardware drivers: reports that a key went down or up. Called in
  * interrupt context. */

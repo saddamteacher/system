@@ -17,9 +17,10 @@ user/compositor  user/init       window server, first process
 libc                             userland C library
 --------------------------------- syscall boundary ---------------------------
 kernel/syscall                   syscall table and handlers
-kernel/fs  kernel/ipc            VFS, message passing, shared memory
+kernel/ipc                       channels, named ports, shared memory
+kernel/fs                        VFS, file objects, poll, file systems
 kernel/drivers                   device drivers (may block, so above sched)
-kernel/sched                     threads, scheduler, wait queues, mutex
+kernel/sched                     threads, scheduler, wait queues, processes
 kernel/mm                        memory management
 kernel/core                      panic, logging, locks, lists, time
 arch/x86_64                      everything CPU-specific
@@ -56,7 +57,8 @@ boot                             Limine config, linker script
 | `kernel/core/` | string functions, printf, log, spinlock, panic, command line, list, bitmap, time |
 | `kernel/mm/` | frame allocator (`pmm`), kernel virtual memory (`vmm`), heap, user address spaces (`aspace`) |
 | `kernel/sched/` | threads, round-robin scheduler, wait queues, mutex, processes, ELF loader |
-| `kernel/fs/` | VFS, tar-based initial RAM file system, device file system |
+| `kernel/fs/` | VFS, tar-based initial RAM file system, device file system, poll |
+| `kernel/ipc/` | message channels, named ports, shared memory |
 | `kernel/syscall/` | system call table, handlers, checked access to user memory |
 | `kernel/drivers/serial/` | 16550 UART driver |
 | `kernel/drivers/ps2/` | PS/2 controller (8042) driver |
@@ -78,6 +80,12 @@ Two rules that follow from the layering and are easy to get wrong:
 - When `arch` needs a kernel *service* rather than a notification, the kernel
   passes it in: `arch_mmu_init` receives the frame allocator as a pair of
   function pointers, because page tables are stored in frames.
+- The same technique lets a lower kernel layer notify a higher one: the
+  keyboard driver calls a listener that `devfs` installs (to wake pollers),
+  and `core/time` calls the scheduler's tick hook.
+- IPC objects are files (`struct file` with their own operations), so they
+  live in descriptor tables, can be polled, and can be sent over channels.
+  That is why `ipc` sits above `fs`.
 
 ## Kernel virtual address space (x86_64)
 
@@ -94,8 +102,12 @@ Locks are always taken in this order, never the reverse:
 address space lock, then heap lock, then vmm lock, then pmm lock.
 
 A lock that protects a waited-for condition (a mutex's internal lock, the
-keyboard queue lock, the process table lock) is taken before the scheduler
-lock. The scheduler lock
+keyboard queue lock, the process table lock, a channel's lock, the port
+lock, the poll lock) is taken before the scheduler lock.
+
+The poll lock is taken before a file's own lock (poll asks each file for its
+state). Code that changes a file's state therefore calls `poll_notify()`
+only after releasing that file's lock. The scheduler lock
 and the log lock are leaves: nothing is acquired while holding them.
 
 ## Interrupt context
@@ -112,3 +124,4 @@ take spinlocks (which every other user holds with interrupts disabled).
 - [03 - Interrupts, time and the keyboard](03-interrupts.md)
 - [04 - Threads and scheduling](04-scheduling.md)
 - [05 - User space: processes, system calls, files, libc](05-userspace.md)
+- [06 - IPC: channels, ports, shared memory, poll](06-ipc.md)

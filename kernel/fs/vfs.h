@@ -27,6 +27,9 @@ struct file_ops {
     int64_t (*read)(struct file *file, void *buffer, size_t size);
     int64_t (*write)(struct file *file, const void *buffer, size_t size);
     void (*close)(struct file *file);
+    /* Returns SD_POLL_* bits describing the file right now, without
+     * blocking. NULL means "always readable". */
+    unsigned (*poll)(struct file *file);
 };
 
 /* An open file. Shared between everyone who holds a reference to it,
@@ -57,6 +60,10 @@ struct filesystem {
 int vfs_mount(const char *prefix, const struct filesystem *filesystem);
 
 int vfs_open(const char *path, struct file **file);
+/* Creates an open file that has no path: IPC objects use the file interface
+ * so that they can live in descriptor tables. Returns NULL if out of
+ * memory. */
+struct file *vfs_file_create(const struct file_ops *ops, void *context, uint32_t type);
 /* Adds a reference; each reference is dropped with vfs_close(). */
 void vfs_retain(struct file *file);
 void vfs_close(struct file *file);
@@ -66,6 +73,9 @@ int64_t vfs_write(struct file *file, const void *buffer, size_t size);
 int64_t vfs_seek(struct file *file, int64_t offset, int whence);
 
 int vfs_stat(const char *path, struct sd_stat *stat);
+void vfs_fstat(const struct file *file, struct sd_stat *stat);
+/* Current SD_POLL_* state of a file. */
+unsigned vfs_poll(struct file *file);
 int vfs_readdir(const char *path, size_t index, struct sd_dirent *entry);
 
 #endif

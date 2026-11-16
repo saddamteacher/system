@@ -10,6 +10,7 @@
 #include <mm/pmm.h>
 #include <sched/mutex.h>
 #include <sched/thread.h>
+#include <sched/wait_queue.h>
 
 #define EXPECT(condition) \
     do { \
@@ -129,6 +130,70 @@ bool test_sleep(void)
     }
     EXPECT(wake_count == SLEEPER_COUNT);
     EXPECT(wake_order[0] == 20 && wake_order[1] == 40 && wake_order[2] == 60);
+    return true;
+}
+
+/* ---------------------------------------------------------- timed wait */
+
+static struct spinlock gate_lock = SPINLOCK_INIT;
+static struct wait_queue gate_queue;
+static bool gate_open;
+
+static void gate_opener_thread(void *argument)
+{
+    thread_sleep_ms((uint64_t)(uintptr_t)argument);
+    arch_irq_state_t irq_state = spinlock_acquire(&gate_lock);
+    gate_open = true;
+    wait_queue_wake_all(&gate_queue);
+    spinlock_release(&gate_lock, irq_state);
+}
+
+/* Waits for the gate with a timeout; reports whether it opened in time. */
+static bool wait_for_gate(uint64_t timeout_ms, uint64_t *elapsed_ms)
+{
+    uint64_t start = time_now_ms();
+    arch_irq_state_t irq_state = spinlock_acquire(&gate_lock);
+    bool woken = true;
+    while (!gate_open && woken) {
+        woken = wait_queue_wait_timeout(&gate_queue, &gate_lock, timeout_ms);
+    }
+    bool opened = gate_open;
+    spinlock_release(&gate_lock, irq_state);
+    *elapsed_ms = time_now_ms() - start;
+    return opened;
+}
+
+bool test_timed_wait(void)
+{
+    uint64_t elapsed;
+    wait_queue_init(&gate_queue);
+
+    /* Nobody opens the gate: the wait must end by itself, on time. */
+    gate_open = false;
+    EXPECT(!wait_for_gate(40, &elapsed));
+    EXPECT(elapsed >= 40 && elapsed <= 50);
+
+    /* The gate opens before the deadline: the wake-up wins. */
+    gate_open = false;
+    struct thread *opener = thread_create("opener", gate_opener_thread, (void *)(uintptr_t)20);
+    EXPECT(opener != NULL);
+    EXPECT(wait_for_gate(500, &elapsed));
+    EXPECT(elapsed >= 20 && elapsed <= 40);
+    thread_join(opener);
+
+    /* The cancelled deadline must not fire later and disturb the thread:
+     * an ordinary sleep still lasts its full length. */
+    uint64_t before = time_now_ms();
+    thread_sleep_ms(600);
+    EXPECT(time_now_ms() - before >= 600);
+
+    /* The gate opens after the deadline: the timeout wins, and the late
+     * wake-up finds nobody waiting. */
+    gate_open = false;
+    opener = thread_create("opener", gate_opener_thread, (void *)(uintptr_t)60);
+    EXPECT(opener != NULL);
+    EXPECT(!wait_for_gate(20, &elapsed));
+    thread_join(opener);
     return true;
 }
 

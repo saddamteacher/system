@@ -93,6 +93,19 @@ int vfs_open(const char *path, struct file **result)
     return 0;
 }
 
+struct file *vfs_file_create(const struct file_ops *ops, void *context, uint32_t type)
+{
+    struct file *file = kzalloc(sizeof(*file));
+    if (file == NULL) {
+        return NULL;
+    }
+    file->ops = ops;
+    file->context = context;
+    file->type = type;
+    atomic_init(&file->references, 1);
+    return file;
+}
+
 void vfs_retain(struct file *file)
 {
     atomic_fetch_add(&file->references, 1);
@@ -176,6 +189,18 @@ int vfs_stat(const char *path, struct sd_stat *stat)
     }
     memset(stat, 0, sizeof(*stat));
     return filesystem->stat(filesystem->context, relative, stat);
+}
+
+void vfs_fstat(const struct file *file, struct sd_stat *stat)
+{
+    memset(stat, 0, sizeof(*stat));
+    stat->type = file->type;
+    stat->size = file->size;
+}
+
+unsigned vfs_poll(struct file *file)
+{
+    return file->ops->poll != NULL ? file->ops->poll(file) : SD_POLL_IN;
 }
 
 int vfs_readdir(const char *path, size_t index, struct sd_dirent *entry)

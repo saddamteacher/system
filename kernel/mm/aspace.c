@@ -18,6 +18,10 @@ struct region {
     struct list_node link;
     uintptr_t start;
     size_t pages;
+    /* NULL for private memory, whose frames die with the region. For
+     * borrowed frames: how to tell their owner we are done with them. */
+    void (*release)(void *context);
+    void *release_context;
 };
 
 struct address_space {
@@ -60,7 +64,14 @@ static void unmap_pages_locked(struct address_space *space, uintptr_t start, siz
 
 static void region_destroy_locked(struct address_space *space, struct region *region)
 {
-    unmap_pages_locked(space, region->start, region->pages);
+    if (region->release != NULL) {
+        for (size_t i = 0; i < region->pages; i++) {
+            arch_mmu_unmap(&space->arch, region->start + i * ARCH_PAGE_SIZE, NULL);
+        }
+        region->release(region->release_context);
+    } else {
+        unmap_pages_locked(space, region->start, region->pages);
+    }
     list_remove(&region->link);
     kfree(region);
 }
@@ -130,8 +141,50 @@ static bool map_locked(struct address_space *space, uintptr_t start, size_t page
     }
     region->start = start;
     region->pages = pages;
+    region->release = NULL;
     list_push_back(&space->regions, &region->link);
     return true;
+}
+
+static bool map_frames_locked(struct address_space *space, uintptr_t start, const phys_addr_t *frames, size_t pages)
+{
+    for (size_t i = 0; i < pages; i++) {
+        if (!arch_mmu_map(&space->arch, start + i * ARCH_PAGE_SIZE, frames[i], ARCH_MAP_WRITE | ARCH_MAP_USER)) {
+            for (size_t undo = 0; undo < i; undo++) {
+                arch_mmu_unmap(&space->arch, start + undo * ARCH_PAGE_SIZE, NULL);
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+uintptr_t aspace_map_frames(struct address_space *space, const phys_addr_t *frames, size_t pages,
+                            void (*release)(void *context), void *context)
+{
+    if (pages == 0 || pages > SIZE_MAX / ARCH_PAGE_SIZE) {
+        return 0;
+    }
+    struct region *region = kmalloc(sizeof(*region));
+    if (region == NULL) {
+        return 0;
+    }
+    arch_irq_state_t irq_state = spinlock_acquire(&space->lock);
+
+    uintptr_t start = space->mmap_next;
+    if (range_in_user_space(start, pages * ARCH_PAGE_SIZE) && map_frames_locked(space, start, frames, pages)) {
+        *region = (struct region){ .start = start, .pages = pages, .release = release, .release_context = context };
+        list_push_back(&space->regions, &region->link);
+        space->mmap_next = start + (pages + 1) * ARCH_PAGE_SIZE;
+    } else {
+        start = 0;
+    }
+
+    spinlock_release(&space->lock, irq_state);
+    if (start == 0) {
+        kfree(region);
+    }
+    return start;
 }
 
 bool aspace_map(struct address_space *space, uintptr_t start, size_t pages, unsigned flags)

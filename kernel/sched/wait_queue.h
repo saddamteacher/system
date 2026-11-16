@@ -1,6 +1,9 @@
 #ifndef SCHED_WAIT_QUEUE_H
 #define SCHED_WAIT_QUEUE_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 #include <core/list.h>
 #include <core/spinlock.h>
 
@@ -35,6 +38,13 @@ void wait_queue_init(struct wait_queue *queue);
  * `lock` must be held with interrupts disabled (as spinlock_acquire does).
  */
 void wait_queue_wait(struct wait_queue *queue, struct spinlock *lock);
+
+/*
+ * Like wait_queue_wait(), but gives up after `timeout_ms`. Returns true if
+ * the thread was woken, false if the time ran out. Either way `lock` is
+ * held again on return and the condition must be re-checked.
+ */
+bool wait_queue_wait_timeout(struct wait_queue *queue, struct spinlock *lock, uint64_t timeout_ms);
 
 /* Make the longest-waiting thread, or all waiting threads, runnable. Safe
  * from interrupt context. */

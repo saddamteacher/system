@@ -4,7 +4,8 @@
  * State, all protected by sched_lock:
  *   current      the thread on the CPU
  *   run_queue    READY threads, next to run at the front
- *   sleep_queue  SLEEPING threads, soonest wake-up at the front
+ *   sleep_queue  threads with a deadline (SLEEPING, or BLOCKED with a
+ *                timeout), soonest wake-up at the front
  *   reap_queue   detached ZOMBIE threads waiting to be freed
  *   every struct thread, the id counter and the statistics
  *
@@ -49,6 +50,11 @@ static struct thread *thread_from_link(struct list_node *link)
     return container_of(link, struct thread, queue_link);
 }
 
+static struct thread *thread_from_sleep_link(struct list_node *link)
+{
+    return container_of(link, struct thread, sleep_link);
+}
+
 struct thread *sched_current_locked(void)
 {
     return current;
@@ -56,6 +62,9 @@ struct thread *sched_current_locked(void)
 
 void sched_make_ready_locked(struct thread *thread)
 {
+    /* Whatever the thread was waiting for, it is over: a thread woken from
+     * a wait queue must not be woken again by its timeout. */
+    list_remove(&thread->sleep_link);
     thread->state = THREAD_READY;
     list_push_back(&run_queue, &thread->queue_link);
 }
@@ -120,11 +129,15 @@ void sched_switch_locked(void)
 static void wake_sleepers_locked(uint64_t now)
 {
     while (!list_is_empty(&sleep_queue)) {
-        struct thread *thread = thread_from_link(sleep_queue.next);
+        struct thread *thread = thread_from_sleep_link(sleep_queue.next);
         if (thread->wake_tick > now) {
             break; /* sorted: nobody further back is due either */
         }
-        list_remove(&thread->queue_link);
+        if (thread->state == THREAD_BLOCKED) {
+            /* A timed wait ran out: take the thread off its wait queue. */
+            list_remove(&thread->queue_link);
+            thread->timed_out = true;
+        }
         sched_make_ready_locked(thread);
     }
 }
@@ -177,6 +190,7 @@ void sched_init(void)
     idle_thread = (struct thread){ .id = next_thread_id++, .state = THREAD_RUNNING };
     memcpy(idle_thread.name, "idle", sizeof("idle"));
     list_init(&idle_thread.queue_link);
+    list_init(&idle_thread.sleep_link);
     wait_queue_init(&idle_thread.exit_waiters);
     current = &idle_thread;
     stats.live_threads = 1;
@@ -230,6 +244,7 @@ struct thread *thread_create_user(const char *name, thread_entry_fn entry, void 
     thread->argument = argument;
     thread->context = arch_context_create(thread->stack_top, thread_start);
     list_init(&thread->queue_link);
+    list_init(&thread->sleep_link);
     wait_queue_init(&thread->exit_waiters);
 
     arch_irq_state_t irq_state = spinlock_acquire(&sched_lock);
@@ -319,13 +334,18 @@ void thread_yield(void)
 
 /* Keeps the sleep queue sorted by wake-up time, so the tick handler only
  * ever has to look at the front. */
-static void sleep_queue_insert_locked(struct thread *thread)
+void sched_sleep_queue_insert_locked(struct thread *thread, uint64_t milliseconds)
 {
+    /* One extra tick: the current tick is already partly over, and the
+     * promise is "at least" the requested time. */
+    uint64_t ticks = (milliseconds + TIME_MS_PER_TICK - 1) / TIME_MS_PER_TICK + 1;
+    thread->wake_tick = time_ticks() + ticks;
+
     struct list_node *position = sleep_queue.next;
-    while (position != &sleep_queue && thread_from_link(position)->wake_tick <= thread->wake_tick) {
+    while (position != &sleep_queue && thread_from_sleep_link(position)->wake_tick <= thread->wake_tick) {
         position = position->next;
     }
-    list_insert_between(&thread->queue_link, position->prev, position);
+    list_insert_between(&thread->sleep_link, position->prev, position);
 }
 
 void thread_sleep_ms(uint64_t milliseconds)
@@ -335,12 +355,8 @@ void thread_sleep_ms(uint64_t milliseconds)
     if (current == &idle_thread) {
         panic("sched: the idle thread tried to sleep");
     }
-    /* One extra tick: the current tick is already partly over, and the
-     * promise is "at least" the requested time. */
-    uint64_t ticks = (milliseconds + TIME_MS_PER_TICK - 1) / TIME_MS_PER_TICK + 1;
-    current->wake_tick = time_ticks() + ticks;
     current->state = THREAD_SLEEPING;
-    sleep_queue_insert_locked(current);
+    sched_sleep_queue_insert_locked(current, milliseconds);
     sched_switch_locked();
 
     spinlock_release(&sched_lock, irq_state);

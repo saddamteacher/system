@@ -24,6 +24,16 @@ static const syscall_handler_fn handlers[SYS_COUNT] = {
     [SYS_SLEEP_MS] = sys_sleep_ms,
     [SYS_YIELD] = sys_yield,
     [SYS_UPTIME_MS] = sys_uptime_ms,
+    [SYS_FSTAT] = sys_fstat,
+    [SYS_POLL] = sys_poll,
+    [SYS_CHANNEL_CREATE] = sys_channel_create,
+    [SYS_PORT_CREATE] = sys_port_create,
+    [SYS_PORT_ACCEPT] = sys_port_accept,
+    [SYS_PORT_CONNECT] = sys_port_connect,
+    [SYS_SEND] = sys_send,
+    [SYS_RECV] = sys_recv,
+    [SYS_SHM_CREATE] = sys_shm_create,
+    [SYS_SHM_MAP] = sys_shm_map,
 };
 
 int64_t kernel_syscall(uint64_t number, const uint64_t arguments[ARCH_SYSCALL_ARGUMENT_COUNT])
