@@ -47,6 +47,7 @@ bool test_user_compositor(void);
 bool test_user_desktop(void);
 bool test_user_anim(void);
 bool test_user_animations(void);
+bool test_user_apps(void);
 
 /* test_traps.c */
 bool test_breakpoint(void);

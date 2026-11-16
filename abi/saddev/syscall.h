@@ -23,7 +23,9 @@ enum {
     SYS_READDIR,    /* (const char *path, size_t index, struct sd_dirent *out) -> 0 */
     SYS_MMAP,       /* (size_t length)                          -> address of zeroed memory */
     SYS_MUNMAP,     /* (void *address, size_t length)           -> 0 */
-    SYS_SPAWN,      /* (const char *path, char *const argv[])   -> pid */
+    /* `stdio` is NULL (inherit the caller's descriptors 0-2) or three
+     * descriptors of the caller that become 0-2 of the new program. */
+    SYS_SPAWN,      /* (const char *path, char *const argv[], const int stdio[3]) -> pid */
     SYS_WAIT,       /* (int pid, int *exit_code)                -> 0 */
     SYS_GETPID,     /* ()                                       -> pid */
     SYS_SLEEP_MS,   /* (uint64_t milliseconds)                  -> 0 */
@@ -44,6 +46,7 @@ enum {
     SYS_CLOCK_NS,   /* ()                                       -> nanoseconds since boot */
     SYS_WALL_TIME,  /* ()                                       -> seconds since 1970-01-01 UTC */
     SYS_DETACH,     /* (int pid)                                -> 0; nobody will wait for it */
+    SYS_SYSINFO,    /* (struct sd_sysinfo *out)                 -> 0 */
     SYS_COUNT
 };
 
@@ -102,6 +105,17 @@ struct sd_pollfd {
 
 /* Largest shared memory object. */
 #define SD_SHM_MAX_SIZE (64u << 20)
+
+/* A snapshot of system-wide figures, from SYS_SYSINFO. */
+struct sd_sysinfo {
+    uint64_t memory_total; /* bytes of usable RAM */
+    uint64_t memory_free;
+    uint64_t kernel_heap_used; /* bytes allocated in the kernel heap */
+    uint64_t uptime_ms;
+    uint64_t context_switches;
+    uint32_t processes;
+    uint32_t threads;
+};
 
 /* Exit code of a process the kernel ended because of a CPU exception:
  * SD_EXIT_FAULT_BASE + exception vector (14 = page fault). */

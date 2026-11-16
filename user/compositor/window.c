@@ -414,14 +414,23 @@ static void reply_error(struct client *client, int code)
     client_send(client, &reply);
 }
 
+#define CASCADE_OFFSET 36
+#define CASCADE_STEPS 5
+
 static void place_window(struct window *window, const struct gui_message *request)
 {
     struct gfx_rect area = work_area();
     window->x = request->create.x;
     window->y = request->create.y;
     if (request->create.flags & GUI_CREATE_CENTERED) {
-        window->x = area.x + (area.width - window->width) / 2;
-        window->y = area.y + (area.height - window->height + TITLE_BAR_HEIGHT) / 2;
+        /* Each new window is placed a little down and right of where the
+         * previous one went, so they do not land exactly on top of each
+         * other; after a few it starts over. */
+        static int cascade;
+        int shift = (window->kind == GUI_WINDOW_NORMAL ? cascade++ % CASCADE_STEPS : 0) * CASCADE_OFFSET;
+        window->x = area.x + (area.width - window->width) / 2 + shift - CASCADE_OFFSET * CASCADE_STEPS / 2;
+        window->y = area.y + (area.height - window->height + TITLE_BAR_HEIGHT) / 2 + shift
+                  - CASCADE_OFFSET * CASCADE_STEPS / 2;
     }
     if (window->kind == GUI_WINDOW_NORMAL) {
         /* Keep the title bar reachable: without it the window could never

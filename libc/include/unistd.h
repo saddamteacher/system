@@ -34,6 +34,9 @@ int munmap_pages(void *address, size_t length);
 /* Starts a program. argv is NULL-terminated; argv[0] is its name by
  * convention. Returns the new process id. */
 int spawn(const char *path, char *const argv[]);
+/* Like spawn(), but the new program's standard input, output and error
+ * are the given descriptors of this process (e.g. the ends of channels). */
+int spawn_with_io(const char *path, char *const argv[], int input, int output, int error);
 /* Waits for a process to end; stores its exit code if exit_code != NULL. */
 int waitpid(int pid, int *exit_code);
 /* Declares that this program will not wait for process `pid`; the system
@@ -48,6 +51,9 @@ uint64_t uptime_ms(void);
 uint64_t clock_ns(void);
 /* Calendar time: seconds since 1970-01-01 00:00:00 UTC. */
 uint64_t wall_time(void);
+
+/* System-wide figures: memory, uptime, process counts. */
+int sysinfo(struct sd_sysinfo *info);
 
 _Noreturn void _exit(int status);
 

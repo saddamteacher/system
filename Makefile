@@ -102,12 +102,12 @@ LIBGUI_SRCS := $(shell find user/libgui/src -name '*.c' | sort)
 LIBGUI_OBJS := $(LIBGUI_SRCS:%.c=$(BUILD)/obj/%.o)
 LIBGUI      := $(BUILD)/libgui.a
 
-# Glyph atlases, rasterized at build time from the TrueType files:
-# <weight>-<pixel size>.
-FONT_SOURCE_DIR := third_party/fonts/inter
-FONT_VARIANTS   := Regular-11 Regular-13 Regular-15 Regular-20 Medium-13 SemiBold-13 SemiBold-15 SemiBold-28
+# Glyph atlases, rasterized at build time from the TrueType files under
+# third_party/fonts: <Family>-<Weight>-<pixel size>.
+FONT_VARIANTS   := Inter-Regular-11 Inter-Regular-13 Inter-Regular-15 Inter-Regular-20 Inter-Medium-13 \
+                   Inter-SemiBold-13 Inter-SemiBold-15 Inter-SemiBold-28 JetBrainsMono-Regular-13
 GENERATED_ROOT  := $(BUILD)/rootfs
-FONTS           := $(FONT_VARIANTS:%=$(GENERATED_ROOT)/fonts/Inter-%.sdf)
+FONTS           := $(FONT_VARIANTS:%=$(GENERATED_ROOT)/fonts/%.sdf)
 
 # Programs are built into $(BUILD)/user/, laid out as in the file system.
 USER_TEST_SRCS := $(sort $(wildcard user/tests/*.c))
@@ -115,9 +115,13 @@ COMPOSITOR_SRCS := $(sort $(wildcard user/compositor/*.c))
 COMPOSITOR_OBJS := $(COMPOSITOR_SRCS:%.c=$(BUILD)/obj/%.o)
 DESKTOP_SRCS    := $(sort $(wildcard user/desktop/*.c))
 DESKTOP_OBJS    := $(DESKTOP_SRCS:%.c=$(BUILD)/obj/%.o)
+# Applications: every directory under user/apps becomes /bin/<name>.
+APP_NAMES       := $(notdir $(wildcard user/apps/*))
+APP_OBJS        := $(patsubst %.c,$(BUILD)/obj/%.o,$(sort $(wildcard user/apps/*/*.c)))
 USER_PROGRAMS  := $(BUILD)/user/bin/init $(BUILD)/user/bin/compositor $(BUILD)/user/bin/desktop \
+                  $(APP_NAMES:%=$(BUILD)/user/bin/%) \
                   $(USER_TEST_SRCS:user/tests/%.c=$(BUILD)/user/test/%)
-USER_OBJS      := $(BUILD)/obj/user/init/init.o $(COMPOSITOR_OBJS) $(DESKTOP_OBJS) \
+USER_OBJS      := $(BUILD)/obj/user/init/init.o $(COMPOSITOR_OBJS) $(DESKTOP_OBJS) $(APP_OBJS) \
                   $(USER_TEST_SRCS:%.c=$(BUILD)/obj/%.o)
 
 INITRAMFS := $(BUILD)/initramfs.tar
@@ -178,7 +182,7 @@ PASS_TESTS  := printf cmdline bitmap list pmm vmm heap threads sleep mutex timed
                boot user-hello user-syscalls user-files user-malloc user-spawn user-fpu \
                user-sleep user-fault user-churn user-ipc user-ipc-edge user-anim
 # Tests with their own expectations, written out below.
-OTHER_TESTS := timer keyboard user-gfx user-compositor user-desktop user-animations breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
+OTHER_TESTS := timer keyboard user-gfx user-compositor user-desktop user-animations user-apps breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
 
 CHECKS := $(PASS_TESTS) $(OTHER_TESTS)
 .PHONY: check $(CHECKS:%=check-%)
@@ -234,6 +238,15 @@ check-user-animations: $(BUILD)/test-user-animations.iso
 	@CHECK_SIDECAR="tools/qemu-anim-check.py $(ANIM_QMP) $(BUILD)/check-user-animations.log $(BUILD)/anim" \
 	    $(call run-check,user-animations,$<,pass,'desktop: ready' 'compositor: exiting' \
 	    "test: 'user-animations' passed",-qmp unix:$(ANIM_QMP)$(comma)server=on$(comma)wait=off)
+
+# The applications, started from the dock and used as a person would
+# (tools/qemu-apps-check.py).
+APPS_QMP := $(BUILD)/check-user-apps.qmp
+check-user-apps: CHECK_TIMEOUT := 180
+check-user-apps: $(BUILD)/test-user-apps.iso
+	@CHECK_SIDECAR="tools/qemu-apps-check.py $(APPS_QMP) $(BUILD)/check-user-apps.log $(BUILD)/apps" \
+	    $(call run-check,user-apps,$<,pass,'desktop: ready' 'sh: hello-from-the-terminal' 'compositor: exiting' \
+	    "test: 'user-apps' passed",-qmp unix:$(APPS_QMP)$(comma)server=on$(comma)wait=off)
 
 # The handler must return to the interrupted code, so the test still passes.
 check-breakpoint: $(BUILD)/test-breakpoint.iso
@@ -294,10 +307,11 @@ $(LIBGUI): $(LIBGUI_OBJS)
 	@mkdir -p $(@D)
 	$(AR) rcs $@ $^
 
-# Inter-Regular-13.sdf is made from Inter-Regular.ttf at 13 pixels.
+# Inter-Regular-13.sdf is made from Inter-Regular.ttf, found in one of the
+# font directories, at 13 pixels.
 $(GENERATED_ROOT)/fonts/%.sdf: tools/mkfont.py
 	@mkdir -p $(@D)
-	tools/mkfont.py $(FONT_SOURCE_DIR)/$(firstword $(subst -, ,$*))-$(word 2,$(subst -, ,$*)).ttf \
+	tools/mkfont.py $(wildcard third_party/fonts/*/$(firstword $(subst -, ,$*))-$(word 2,$(subst -, ,$*)).ttf) \
 	    $(word 3,$(subst -, ,$*)) $@
 
 # libgui before libc on the link line: a static library only resolves
@@ -316,6 +330,13 @@ $(BUILD)/user/bin/compositor: $(COMPOSITOR_OBJS) $(USER_LINK_DEPS)
 
 $(BUILD)/user/bin/desktop: $(DESKTOP_OBJS) $(USER_LINK_DEPS)
 	$(link-user)
+
+# One link rule per application, from all the .c files in its directory.
+define app-rule
+$(BUILD)/user/bin/$(1): $(patsubst %.c,$(BUILD)/obj/%.o,$(sort $(wildcard user/apps/$(1)/*.c))) $$(USER_LINK_DEPS)
+	$$(link-user)
+endef
+$(foreach app,$(APP_NAMES),$(eval $(call app-rule,$(app))))
 
 $(BUILD)/user/test/%: $(BUILD)/obj/user/tests/%.o $(USER_LINK_DEPS)
 	$(link-user)

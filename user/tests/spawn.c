@@ -1,5 +1,6 @@
 /* Starting other programs, passing arguments, collecting exit codes. */
 #include <errno.h>
+#include <ipc.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -27,6 +28,10 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "child") == 0) {
         return child_main(argc, argv);
     }
+    if (argc > 1 && strcmp(argv[1], "say") == 0) {
+        printf("said through the channel\n");
+        return 7;
+    }
 
     char *child_arguments[] = { "/test/spawn", "child", "alpha", "two words", NULL };
     int first = spawn("/test/spawn", child_arguments);
@@ -53,6 +58,25 @@ int main(int argc, char **argv)
     CHECK(waitpid(fourth, &exit_code) == -1 && errno == ECHILD);
     CHECK(detach(99999) == -1 && errno == ESRCH);
     sleep_ms(100); /* let the first detached child finish before we exit */
+
+    /* A child can be given other standard files: here its output goes
+     * into a channel that we read. */
+    int ends[2];
+    CHECK(channel_create(ends) == 0);
+    char *echo_arguments[] = { "/test/spawn", "say", NULL };
+    int talker = spawn_with_io("/test/spawn", echo_arguments, ends[1], ends[1], ends[1]);
+    CHECK(talker > 0);
+    char heard[64] = { 0 };
+    CHECK(msg_recv(ends[0], heard, sizeof(heard) - 1, NULL) > 0);
+    CHECK(strcmp(heard, "said through the channel\n") == 0);
+    CHECK(waitpid(talker, &exit_code) == 0 && exit_code == 7);
+    CHECK(spawn_with_io("/test/spawn", echo_arguments, ends[1], 99, ends[1]) == -1 && errno == EBADF);
+    CHECK(close(ends[0]) == 0 && close(ends[1]) == 0);
+
+    struct sd_sysinfo info;
+    CHECK(sysinfo(&info) == 0);
+    CHECK(info.memory_total > info.memory_free && info.memory_free > 0);
+    CHECK(info.processes >= 1 && info.threads >= 2 && info.uptime_ms > 0);
 
     char *plain[] = { "x", NULL };
     CHECK(spawn("/no/such/program", plain) == -1 && errno == ENOENT);

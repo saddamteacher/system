@@ -17,7 +17,7 @@
 static bool run_program(const char *path, const char *argument, int expected_exit_code)
 {
     const char *argv[2] = { path, argument };
-    int pid = process_spawn(path, argument != NULL ? 2 : 1, argv, NULL);
+    int pid = process_spawn(path, argument != NULL ? 2 : 1, argv, NULL, NULL);
     if (pid < 0) {
         log_error("user test: cannot start %s: error %d", path, -pid);
         return false;
@@ -87,6 +87,11 @@ bool test_user_compositor(void)
 bool test_user_animations(void)
 {
     return run_program("/test/desktop-session", "slow", 0);
+}
+
+bool test_user_apps(void)
+{
+    return run_program("/test/desktop-session", "apps", 0);
 }
 
 bool test_user_anim(void)

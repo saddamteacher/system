@@ -16,9 +16,24 @@ static long check(long result)
     return result;
 }
 
+#define WRITE_RETRY_LIMIT 2000
+
 long write(int descriptor, const void *buffer, size_t size)
 {
-    return check(syscall6(SYS_WRITE, descriptor, (long)buffer, (long)size, 0, 0, 0));
+    /*
+     * Output to a channel (a program running in a terminal window) fails
+     * with EAGAIN while the reader's queue is full. Programs expect write
+     * to wait in that case, so wait here: the reader normally catches up
+     * within milliseconds. Give up after a couple of seconds, in case it
+     * never will.
+     */
+    for (int attempt = 0;; attempt++) {
+        long result = syscall6(SYS_WRITE, descriptor, (long)buffer, (long)size, 0, 0, 0);
+        if (result != -EAGAIN || attempt == WRITE_RETRY_LIMIT) {
+            return check(result);
+        }
+        syscall6(SYS_SLEEP_MS, 1, 0, 0, 0, 0, 0);
+    }
 }
 
 long read(int descriptor, void *buffer, size_t size)
@@ -65,6 +80,17 @@ int munmap_pages(void *address, size_t length)
 int spawn(const char *path, char *const argv[])
 {
     return (int)check(syscall6(SYS_SPAWN, (long)path, (long)argv, 0, 0, 0, 0));
+}
+
+int spawn_with_io(const char *path, char *const argv[], int input, int output, int error)
+{
+    int descriptors[3] = { input, output, error };
+    return (int)check(syscall6(SYS_SPAWN, (long)path, (long)argv, (long)descriptors, 0, 0, 0));
+}
+
+int sysinfo(struct sd_sysinfo *info)
+{
+    return (int)check(syscall6(SYS_SYSINFO, (long)info, 0, 0, 0, 0, 0));
 }
 
 int waitpid(int pid, int *exit_code)

@@ -1,6 +1,6 @@
 /*
- * The wallpaper: an original picture computed when the desktop starts. A
- * dusk-coloured gradient with a few large, soft glows.
+ * The wallpaper: an original picture computed by the desktop, in one of a
+ * few styles. Each is a gradient with several large, soft glows.
  */
 #include "desktop.h"
 
@@ -13,12 +13,40 @@ struct glow {
     float strength;
 };
 
-static const struct glow glows[] = {
-    { 0.18f, 0.25f, 0.55f, 0.20f, 0.35f, 0.95f, 0.55f },
-    { 0.85f, 0.15f, 0.45f, 0.95f, 0.45f, 0.65f, 0.40f },
-    { 0.70f, 0.95f, 0.60f, 1.00f, 0.62f, 0.25f, 0.55f },
-    { 0.05f, 0.90f, 0.40f, 0.35f, 0.15f, 0.55f, 0.45f },
+#define GLOW_COUNT 4
+
+/* A wallpaper style: the gradient's colour at the top and how it changes
+ * towards the bottom, and the glows laid over it. */
+struct style {
+    float top[3], slope[3];
+    struct glow glows[GLOW_COUNT];
 };
+
+static const struct style styles[SHELL_WALLPAPER_COUNT] = {
+    [SHELL_WALLPAPER_DUSK] = {
+        { 0.09f, 0.11f, 0.26f }, { 0.30f, 0.10f, 0.16f },
+        { { 0.18f, 0.25f, 0.55f, 0.20f, 0.35f, 0.95f, 0.55f },
+          { 0.85f, 0.15f, 0.45f, 0.95f, 0.45f, 0.65f, 0.40f },
+          { 0.70f, 0.95f, 0.60f, 1.00f, 0.62f, 0.25f, 0.55f },
+          { 0.05f, 0.90f, 0.40f, 0.35f, 0.15f, 0.55f, 0.45f } },
+    },
+    [SHELL_WALLPAPER_OCEAN] = {
+        { 0.02f, 0.10f, 0.22f }, { 0.02f, 0.26f, 0.30f },
+        { { 0.20f, 0.20f, 0.55f, 0.10f, 0.45f, 0.85f, 0.55f },
+          { 0.80f, 0.30f, 0.50f, 0.20f, 0.80f, 0.85f, 0.45f },
+          { 0.60f, 0.95f, 0.60f, 0.55f, 0.95f, 0.85f, 0.45f },
+          { 0.05f, 0.85f, 0.40f, 0.05f, 0.20f, 0.50f, 0.50f } },
+    },
+    [SHELL_WALLPAPER_FOREST] = {
+        { 0.05f, 0.14f, 0.12f }, { 0.12f, 0.20f, 0.02f },
+        { { 0.20f, 0.25f, 0.55f, 0.10f, 0.50f, 0.35f, 0.50f },
+          { 0.85f, 0.20f, 0.45f, 0.85f, 0.85f, 0.40f, 0.35f },
+          { 0.65f, 0.95f, 0.60f, 0.30f, 0.70f, 0.25f, 0.50f },
+          { 0.05f, 0.90f, 0.40f, 0.02f, 0.25f, 0.22f, 0.50f } },
+    },
+};
+
+static struct gui_window *wallpaper;
 
 static float clamp01(float value)
 {
@@ -33,20 +61,21 @@ static float pixel_noise(int x, int y)
     return (float)((hash ^ (hash >> 16)) & 0xFFFF) / 65536.0f;
 }
 
-static gfx_color wallpaper_pixel(int x, int y, int width, int height)
+static gfx_color wallpaper_pixel(const struct style *style, int x, int y, int width, int height)
 {
+    const struct glow *glows = style->glows;
     float u = (float)x / (float)width;
     float v = (float)y / (float)height;
 
-    /* Base: deep blue at the top to dusky violet at the bottom, tilted a
-     * little so it is not a plain vertical ramp. */
+    /* Base: one colour at the top shading into another at the bottom,
+     * tilted a little so it is not a plain vertical ramp. */
     float t = clamp01(v * 0.85f + u * 0.15f);
-    float red = 0.09f + 0.30f * t;
-    float green = 0.11f + 0.10f * t;
-    float blue = 0.26f + 0.16f * t;
+    float red = style->top[0] + style->slope[0] * t;
+    float green = style->top[1] + style->slope[1] * t;
+    float blue = style->top[2] + style->slope[2] * t;
 
     float aspect = (float)height / (float)width;
-    for (unsigned i = 0; i < sizeof(glows) / sizeof(glows[0]); i++) {
+    for (unsigned i = 0; i < GLOW_COUNT; i++) {
         float dx = u - glows[i].x;
         float dy = (v - glows[i].y) * aspect;
         float distance = sqrtf(dx * dx + dy * dy) / glows[i].radius;
@@ -70,19 +99,27 @@ static gfx_color wallpaper_pixel(int x, int y, int width, int height)
                    (unsigned)(clamp01(blue + noise) * 255.0f + 0.5f));
 }
 
-bool wallpaper_create(struct gui_connection *connection)
+void wallpaper_apply(void)
 {
-    int width = gui_screen_width(connection), height = gui_screen_height(connection);
-    struct gui_window *window = gui_window_create(connection, GUI_WINDOW_DESKTOP, 0, 0, width, height, "Wallpaper", 0);
-    if (window == NULL) {
-        return false;
-    }
+    const struct style *style = &styles[shell_settings.wallpaper % SHELL_WALLPAPER_COUNT];
+    int width = wallpaper->width, height = wallpaper->height;
+
     for (int y = 0; y < height; y++) {
-        uint32_t *row = window->surface.pixels + (size_t)y * (size_t)window->surface.stride;
+        uint32_t *row = wallpaper->surface.pixels + (size_t)y * (size_t)wallpaper->surface.stride;
         for (int x = 0; x < width; x++) {
-            row[x] = wallpaper_pixel(x, y, width, height); /* opaque, so already premultiplied */
+            row[x] = wallpaper_pixel(style, x, y, width, height); /* opaque, so already premultiplied */
         }
     }
-    gui_window_commit(window, gfx_surface_bounds(&window->surface), false);
+    gui_window_commit(wallpaper, gfx_surface_bounds(&wallpaper->surface), false);
+}
+
+bool wallpaper_create(struct gui_connection *connection)
+{
+    wallpaper = gui_window_create(connection, GUI_WINDOW_DESKTOP, 0, 0, gui_screen_width(connection),
+                                  gui_screen_height(connection), "Wallpaper", 0);
+    if (wallpaper == NULL) {
+        return false;
+    }
+    wallpaper_apply();
     return true;
 }

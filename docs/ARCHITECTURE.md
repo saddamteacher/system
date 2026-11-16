@@ -70,8 +70,9 @@ boot                             Limine config, linker script
 | `user/` | `init`, test programs, `rootfs/` (static files), `user.ld` |
 | `user/libgui/` | 2D drawing (surfaces, shapes, blending, text, blur, scaling), animation (easing, tweens, springs), the window system protocol and its client library |
 | `user/compositor/` | the window server |
-| `user/desktop/` | the desktop shell: wallpaper, menu bar, dock |
-| `third_party/fonts/inter/` | the Inter typeface (SIL OFL 1.1), input to `tools/mkfont.py` |
+| `user/desktop/` | the desktop shell: wallpaper, menu bar, dock, settings |
+| `user/apps/` | applications, one directory each: `terminal`, `sh`, `files`, `settings`, `about` |
+| `third_party/fonts/` | the Inter and JetBrains Mono typefaces (SIL OFL 1.1), input to `tools/mkfont.py` |
 | `tools/` | host setup, ISO and initramfs builders, font atlas generator, serial check runner, QMP key injector and screenshot checker, GDB script |
 
 Two rules that follow from the layering and are easy to get wrong:
@@ -135,3 +136,4 @@ take spinlocks (which every other user holds with interrupts disabled).
 - [08 - The window server](08-compositor.md)
 - [09 - The desktop](09-desktop.md)
 - [10 - Animations](10-animations.md)
+- [11 - Applications](11-apps.md)

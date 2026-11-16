@@ -10,6 +10,7 @@ enum length_modifier { LENGTH_INT, LENGTH_LONG, LENGTH_LONG_LONG, LENGTH_SIZE };
 struct conversion {
     bool left_align;
     bool zero_pad;
+    bool show_plus; /* '+': print a sign for positive numbers too */
     int width;
     int precision; /* -1 when not given */
     enum length_modifier length;
@@ -115,7 +116,7 @@ static void emit_integer(struct output *out, const struct conversion *conv, uint
 
 static void emit_double(struct output *out, const struct conversion *conv, double value)
 {
-    const char *prefix = "";
+    const char *prefix = conv->show_plus ? "+" : "";
     if (value < 0) {
         prefix = "-";
         value = -value;
@@ -207,6 +208,8 @@ static const char *parse_conversion(const char *cursor, struct conversion *conv,
             conv->left_align = true;
         } else if (*cursor == '0') {
             conv->zero_pad = true;
+        } else if (*cursor == '+') {
+            conv->show_plus = true;
         } else {
             break;
         }
@@ -260,7 +263,7 @@ static void emit_conversion(struct output *out, const struct conversion *conv, c
         if (value < 0) {
             emit_integer(out, conv, 0 - (uint64_t)value, 10, false, "-");
         } else {
-            emit_integer(out, conv, (uint64_t)value, 10, false, "");
+            emit_integer(out, conv, (uint64_t)value, 10, false, conv->show_plus ? "+" : "");
         }
         break;
     }
@@ -375,8 +378,43 @@ int putchar(int character)
     return write(STDOUT_FILENO, &byte, 1) == 1 ? character : EOF;
 }
 
+/*
+ * Input is buffered: when standard input is a channel, each read returns a
+ * whole message (typically a line), which would not fit a one-byte request.
+ */
+static char input_buffer[4096];
+static long input_length;
+static long input_position;
+
 int getchar(void)
 {
-    char byte;
-    return read(STDIN_FILENO, &byte, 1) == 1 ? (unsigned char)byte : EOF;
+    if (input_position >= input_length) {
+        input_length = read(STDIN_FILENO, input_buffer, sizeof(input_buffer));
+        input_position = 0;
+        if (input_length <= 0) {
+            input_length = 0;
+            return EOF;
+        }
+    }
+    return (unsigned char)input_buffer[input_position++];
+}
+
+char *fgets_stdin(char *buffer, int size)
+{
+    int length = 0;
+    while (length < size - 1) {
+        int character = getchar();
+        if (character == EOF) {
+            break;
+        }
+        buffer[length++] = (char)character;
+        if (character == '\n') {
+            break;
+        }
+    }
+    if (length == 0) {
+        return NULL;
+    }
+    buffer[length] = '\0';
+    return buffer;
 }

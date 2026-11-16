@@ -4,6 +4,7 @@
  */
 #include "desktop.h"
 
+#include <ipc.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -55,8 +56,39 @@ const char *model_focused_app(void)
     return NULL;
 }
 
-int main(void)
+/* Handles everything the window server has sent. Returns false if the
+ * connection is gone. */
+static bool drain_window_events(struct gui_connection *connection)
 {
+    struct gui_event event;
+    int status;
+    while ((status = gui_next_event(connection, &event, 0)) > 0) {
+        if (event.type == GUI_MSG_SHELL_WINDOW) {
+            model_update(&event);
+            dock_update();
+        } else if (event.type == GUI_MSG_POINTER && dock_owns(event.window)) {
+            dock_handle_pointer(&event);
+        } else if (event.type == GUI_MSG_FRAME && dock_owns(event.window)) {
+            dock_handle_frame();
+        }
+    }
+    return status == 0;
+}
+
+static void apply_settings(uint32_t previous_wallpaper)
+{
+    if (shell_settings.wallpaper != previous_wallpaper) {
+        wallpaper_apply();
+    }
+    menubar_invalidate();
+    dock_update();
+}
+
+/* usage: desktop [--demo]   (--demo: test programs in the dock) */
+int main(int argc, char **argv)
+{
+    bool demo = argc > 1 && strcmp(argv[1], "--demo") == 0;
+
     struct gui_connection *connection = gui_connect("Desktop");
     if (connection == NULL) {
         printf("desktop: no window server\n");
@@ -68,7 +100,10 @@ int main(void)
         printf("desktop: cannot load fonts or build icons\n");
         return 1;
     }
-    if (!wallpaper_create(connection) || !menubar_create(connection) || !dock_create(connection)) {
+    if (!settings_init()) {
+        printf("desktop: cannot open the settings port; settings stay at their defaults\n");
+    }
+    if (!wallpaper_create(connection) || !menubar_create(connection) || !dock_create(connection, demo)) {
         printf("desktop: cannot create the desktop windows\n");
         return 1;
     }
@@ -77,20 +112,18 @@ int main(void)
     printf("desktop: ready\n");
 
     for (;;) {
-        struct gui_event event;
-        int status = gui_next_event(connection, &event, menubar_time_until_update());
-        if (status < 0) {
-            break; /* the window server is gone */
+        /* Wait for the window server, a settings client, or the clock. */
+        struct sd_pollfd sources[8];
+        sources[0] = (struct sd_pollfd){ .fd = gui_connection_descriptor(connection), .events = SD_POLL_IN };
+        int settings_count = settings_poll_descriptors(&sources[1], 7);
+        poll_fds(sources, (size_t)(1 + settings_count), menubar_time_until_update());
+
+        uint32_t wallpaper_before = shell_settings.wallpaper;
+        if (settings_service(&sources[1], settings_count)) {
+            apply_settings(wallpaper_before);
         }
-        if (status > 0) {
-            if (event.type == GUI_MSG_SHELL_WINDOW) {
-                model_update(&event);
-                dock_update();
-            } else if (event.type == GUI_MSG_POINTER && dock_owns(event.window)) {
-                dock_handle_pointer(&event);
-            } else if (event.type == GUI_MSG_FRAME && dock_owns(event.window)) {
-                dock_handle_frame();
-            }
+        if (!drain_window_events(connection)) {
+            break; /* the window server is gone */
         }
         /* Cheap when nothing changed: it compares before it draws. */
         menubar_update();

@@ -39,6 +39,7 @@ static const syscall_handler_fn handlers[SYS_COUNT] = {
     [SYS_CLOCK_NS] = sys_clock_ns,
     [SYS_WALL_TIME] = sys_wall_time,
     [SYS_DETACH] = sys_detach,
+    [SYS_SYSINFO] = sys_sysinfo,
 };
 
 int64_t kernel_syscall(uint64_t number, const uint64_t arguments[ARCH_SYSCALL_ARGUMENT_COUNT])

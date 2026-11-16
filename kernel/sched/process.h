@@ -20,11 +20,13 @@ void process_init(void);
 
 /*
  * Starts the program at `path` with the given argument strings
- * (`argv[argc]` need not be NULL). The new process inherits the standard
- * files (descriptors 0-2) of `parent`, or gets the console if parent is
- * NULL. Returns the new process id or a negative error code.
+ * (`argv[argc]` need not be NULL). Its standard files (descriptors 0-2)
+ * are, in order of preference: the three files in `stdio` if it is not
+ * NULL; those of `parent`; the console. Returns the new process id or a
+ * negative error code.
  */
-int process_spawn(const char *path, int argc, const char *const argv[], struct process *parent);
+int process_spawn(const char *path, int argc, const char *const argv[], struct process *parent,
+                  struct file *const stdio[3]);
 
 /* Blocks until process `pid` has ended, stores its exit code and forgets
  * the process. Returns 0, or -ECHILD if there is no such process. */

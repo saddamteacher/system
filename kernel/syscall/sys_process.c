@@ -7,6 +7,7 @@
 #include <core/time.h>
 #include <mm/aspace.h>
 #include <mm/heap.h>
+#include <mm/pmm.h>
 #include <sched/process.h>
 #include <sched/thread.h>
 
@@ -99,7 +100,27 @@ int64_t sys_spawn(const uint64_t arguments[])
     }
     const char *argv[SD_ARG_MAX];
     int argc = copy_arguments(arguments[1], storage, storage_size, argv);
-    int64_t result = argc < 0 ? argc : process_spawn(path, argc, argv, process_current());
+    int64_t result = argc;
+
+    /* Optional: three of the caller's descriptors to give the new program
+     * as its standard input, output and error. */
+    struct file *stdio[3];
+    bool custom_stdio = arguments[2] != 0;
+    if (result >= 0 && custom_stdio) {
+        int descriptors[3];
+        result = user_copy_in(descriptors, arguments[2], sizeof(descriptors));
+        for (int i = 0; i < 3 && result >= 0; i++) {
+            stdio[i] = descriptors[i] >= 0 && descriptors[i] < PROCESS_MAX_FILES
+                         ? process_file_get(process_current(), descriptors[i])
+                         : NULL;
+            if (stdio[i] == NULL) {
+                result = -EBADF;
+            }
+        }
+    }
+    if (result >= 0) {
+        result = process_spawn(path, argc, argv, process_current(), custom_stdio ? stdio : NULL);
+    }
 
     kfree(storage);
     return result;
@@ -163,4 +184,20 @@ int64_t sys_wall_time(const uint64_t arguments[])
 int64_t sys_detach(const uint64_t arguments[])
 {
     return process_detach((int)arguments[0]);
+}
+
+int64_t sys_sysinfo(const uint64_t arguments[])
+{
+    struct pmm_stats memory = pmm_stats();
+    struct sched_stats scheduler = sched_stats();
+    struct sd_sysinfo info = {
+        .memory_total = (uint64_t)memory.total_frames * ARCH_PAGE_SIZE,
+        .memory_free = (uint64_t)memory.free_frames * ARCH_PAGE_SIZE,
+        .kernel_heap_used = heap_stats().used_bytes,
+        .uptime_ms = time_now_ms(),
+        .context_switches = scheduler.context_switches,
+        .processes = (uint32_t)process_count(),
+        .threads = (uint32_t)scheduler.live_threads,
+    };
+    return user_copy_out(arguments[0], &info, sizeof(info));
 }

@@ -10,6 +10,7 @@ enum length_modifier { LENGTH_INT, LENGTH_LONG, LENGTH_LONG_LONG, LENGTH_SIZE };
 struct conversion {
     bool left_align;
     bool zero_pad;
+    bool show_plus; /* '+': print a sign for positive numbers too */
     int width;
     enum length_modifier length;
 };
@@ -120,7 +121,7 @@ static void emit_signed(const struct output *out, const struct conversion *conv,
         /* Negate in unsigned arithmetic: -INT64_MIN does not fit in int64_t. */
         emit_number(out, conv, 0 - (uint64_t)value, 10, false, "-");
     } else {
-        emit_number(out, conv, (uint64_t)value, 10, false, "");
+        emit_number(out, conv, (uint64_t)value, 10, false, conv->show_plus ? "+" : "");
     }
 }
 
@@ -144,6 +145,8 @@ static const char *parse_conversion(const char *cursor, struct conversion *conv)
             conv->left_align = true;
         } else if (*cursor == '0') {
             conv->zero_pad = true;
+        } else if (*cursor == '+') {
+            conv->show_plus = true;
         } else {
             break;
         }

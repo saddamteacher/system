@@ -41,6 +41,9 @@ bool test_printf(void)
     EXPECT_FORMAT("[00042]", "[%05d]", 42);
     EXPECT_FORMAT("[-0042]", "[%05d]", -42);
     EXPECT_FORMAT("[  -42]", "[%5d]", -42);
+    EXPECT_FORMAT("+42 -42 +0", "%+d %+d %+d", 42, -42, 0);
+    /* A flag must not disturb the arguments that follow it. */
+    EXPECT_FORMAT("+5 text", "%+d %s", 5, "text");
     EXPECT_FORMAT("[   ab]", "[%5s]", "ab");
     EXPECT_FORMAT("[ab   ]", "[%-5s]", "ab");
     EXPECT_FORMAT("0x00000000deadbeef", "%p", (void *)0xdeadbeefUL);

@@ -11,7 +11,7 @@
  * calls; each printf is one write.
  *
  * Supported conversions: %c %s %d %i %u %x %X %p %f %%
- *   flags '-' and '0', a width, a precision (".N" or ".*"),
+ *   flags '-', '0' and '+', a width, a precision (".N" or ".*"),
  *   lengths l, ll, z.
  */
 int printf(const char *format, ...) __attribute__((format(printf, 1, 2)));
@@ -25,5 +25,8 @@ int puts(const char *text);
 int putchar(int character);
 /* Reads one character from descriptor 0; EOF at end of input. */
 int getchar(void);
+/* Reads one line from descriptor 0, newline included, into `buffer`
+ * (at most size - 1 characters). Returns NULL at end of input. */
+char *fgets_stdin(char *buffer, int size);
 
 #endif

@@ -118,10 +118,10 @@ static void close_all_files(struct process *process)
     }
 }
 
-static int setup_standard_files(struct process *process, struct process *parent)
+static int setup_standard_files(struct process *process, struct process *parent, struct file *const stdio[3])
 {
     for (int descriptor = 0; descriptor < STANDARD_FILE_COUNT; descriptor++) {
-        struct file *file = parent != NULL ? parent->files[descriptor] : NULL;
+        struct file *file = stdio != NULL ? stdio[descriptor] : (parent != NULL ? parent->files[descriptor] : NULL);
         if (file != NULL) {
             vfs_retain(file);
         } else {
@@ -249,7 +249,8 @@ static void destroy_unstarted(struct process *process)
     kfree(process);
 }
 
-int process_spawn(const char *path, int argc, const char *const argv[], struct process *parent)
+int process_spawn(const char *path, int argc, const char *const argv[], struct process *parent,
+                  struct file *const stdio[3])
 {
     if (argc < 0 || argc > SD_ARG_MAX) {
         return -EINVAL;
@@ -267,7 +268,7 @@ int process_spawn(const char *path, int argc, const char *const argv[], struct p
         status = load_program(process, path, argc, argv);
     }
     if (status == 0) {
-        status = setup_standard_files(process, parent);
+        status = setup_standard_files(process, parent, stdio);
     }
     if (status < 0) {
         destroy_unstarted(process);

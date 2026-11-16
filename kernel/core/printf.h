@@ -8,11 +8,14 @@
  * printf-style formatting, shared by the kernel log and ksnprintf.
  *
  * Supported: %c %s %d %i %u %x %X %p %%
- *   flags:   '-' (left-align), '0' (zero-pad numbers)
+ *   flags:   '-' (left-align), '0' (zero-pad numbers), '+' (always a sign)
  *   width:   decimal number, e.g. %8x
  *   length:  l, ll, z            e.g. %lu %llx %zu
  * Not supported: precision, '*', floating point (the kernel has no FPU use).
  * An unknown conversion is printed literally so the mistake is visible.
+ * Beware: it also consumes no argument, so every later conversion in the
+ * same call then reads the wrong one. The compiler cannot warn about this,
+ * because it checks against standard printf, which supports more.
  */
 
 /* Receives the formatted output one character at a time. */

@@ -46,6 +46,7 @@ void compositor_quit(void)
 static struct {
     uint64_t period_start_ns; /* start time of the period's first frame */
     uint64_t last_start_ns;   /* start time of the most recent frame */
+    uint64_t last_work_ns;    /* how long that frame took to draw */
     unsigned frames;          /* frames started in the period, first included */
     uint64_t work_total_ns;
     uint64_t work_max_ns;
@@ -57,10 +58,20 @@ static struct {
  */
 static void stats_record(uint64_t frame_start_ns, uint64_t frame_end_ns)
 {
-    /* The server only draws when something changed. A pause means the
-     * screen was simply still, not that frames were slow; counting it
-     * would report a meaninglessly low rate. Start measuring afresh. */
-    if (stats.frames > 0 && frame_start_ns - stats.last_start_ns > 4 * FRAME_INTERVAL_NS) {
+    /*
+     * The server only draws when something changed, so a gap between two
+     * frames usually means the screen was simply still (or changes came
+     * slower than the frame rate, like a slowly moved mouse). Counting
+     * such gaps would report a meaninglessly low rate, so a period ends
+     * at the first one. But a gap caused by the previous frame taking
+     * long to draw is exactly what the statistic exists to show, and
+     * does count.
+     */
+    uint64_t allowed_gap = FRAME_INTERVAL_NS + FRAME_INTERVAL_NS / 2;
+    if (stats.last_work_ns + FRAME_INTERVAL_NS / 2 > allowed_gap) {
+        allowed_gap = stats.last_work_ns + FRAME_INTERVAL_NS / 2;
+    }
+    if (stats.frames > 0 && frame_start_ns - stats.last_start_ns > allowed_gap) {
         stats.frames = 0;
         stats.work_total_ns = 0;
         stats.work_max_ns = 0;
@@ -85,6 +96,7 @@ static void stats_record(uint64_t frame_start_ns, uint64_t frame_end_ns)
         stats.period_start_ns = frame_start_ns;
     }
     uint64_t work = frame_end_ns - frame_start_ns;
+    stats.last_work_ns = work;
     stats.frames++;
     stats.work_total_ns += work;
     if (work > stats.work_max_ns) {

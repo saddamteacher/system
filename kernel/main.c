@@ -105,7 +105,7 @@ static void start_detached(const char *name, thread_entry_fn entry)
 static void run_init(void)
 {
     static const char *const argv[] = { "/bin/init" };
-    int pid = process_spawn(argv[0], 1, argv, NULL);
+    int pid = process_spawn(argv[0], 1, argv, NULL, NULL);
     if (pid < 0) {
         panic("boot: cannot start /bin/init: error %d", -pid);
     }

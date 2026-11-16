@@ -53,17 +53,35 @@ struct dock_item {
     char *const *command;  /* how to start it */
 };
 
+static char *const run_terminal[] = { "/bin/terminal", NULL };
+static char *const run_files[] = { "/bin/files", NULL };
+static char *const run_settings[] = { "/bin/settings", NULL };
+static char *const run_about[] = { "/bin/about", NULL };
+
+static const struct dock_item application_items[] = {
+    { "Terminal", ICON_TERMINAL, run_terminal },
+    { "Files", ICON_FILES, run_files },
+    { "Settings", ICON_SETTINGS, run_settings },
+    { "About", ICON_ABOUT, run_about },
+};
+
+/* The automated checks use small test programs instead, whose windows
+ * carry markers a script can look for. */
 static char *const demo_alpha[] = { "/test/guidemo", "Alpha", "180", "150", "0", NULL };
 static char *const demo_beta[] = { "/test/guidemo", "Beta", "460", "260", "1", NULL };
 static char *const demo_gamma[] = { "/test/guidemo", "Gamma", "760", "170", "2", NULL };
 
-static const struct dock_item items[] = {
+static const struct dock_item demo_items[] = {
     { "Alpha", ICON_DEMO_BLUE, demo_alpha },
     { "Beta", ICON_DEMO_ORANGE, demo_beta },
     { "Gamma", ICON_DEMO_GREEN, demo_gamma },
 };
 
-#define ITEM_COUNT ((int)(sizeof(items) / sizeof(items[0])))
+#define MAX_ITEMS 8
+
+/* The set in use, chosen at start-up. */
+static const struct dock_item *items;
+static int ITEM_COUNT;
 
 struct item_state {
     struct anim_spring scale; /* 1.0 = normal size */
@@ -74,7 +92,7 @@ struct item_state {
 
 static struct gui_window *dock;
 static struct gfx_rect shelf; /* within the dock window */
-static struct item_state states[ITEM_COUNT];
+static struct item_state states[MAX_ITEMS];
 static int pressed_item = -1;
 static bool pointer_inside;
 static int pointer_x;
@@ -115,7 +133,7 @@ static int bounce_offset(const struct item_state *state, uint64_t now_ns)
  */
 static void layout(uint64_t now_ns)
 {
-    int sizes[ITEM_COUNT];
+    int sizes[MAX_ITEMS];
     int total = (ITEM_COUNT - 1) * ICON_GAP;
     for (int i = 0; i < ITEM_COUNT; i++) {
         sizes[i] = (int)((float)ICON_SIZE * states[i].scale.value + 0.5f);
@@ -201,7 +219,7 @@ static void draw(void)
 /* The scale an icon should have for the current pointer position. */
 static float target_scale(int index)
 {
-    if (!pointer_inside) {
+    if (!pointer_inside || !shell_settings.dock_magnification) {
         return 1.0f;
     }
     float distance = fabsf((float)(pointer_x - rest_center_x(index)));
@@ -365,8 +383,12 @@ void dock_handle_pointer(const struct gui_event *event)
     }
 }
 
-bool dock_create(struct gui_connection *connection)
+bool dock_create(struct gui_connection *connection, bool demo)
 {
+    items = demo ? demo_items : application_items;
+    ITEM_COUNT = demo ? (int)(sizeof(demo_items) / sizeof(demo_items[0]))
+                      : (int)(sizeof(application_items) / sizeof(application_items[0]));
+
     int shelf_width = 2 * SHELF_PADDING + ITEM_COUNT * ICON_SIZE + (ITEM_COUNT - 1) * ICON_GAP;
     int width = shelf_width + 2 * SIDE_ROOM;
     int x = (gui_screen_width(connection) - width) / 2;

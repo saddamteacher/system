@@ -14,32 +14,10 @@
 #define BAR_TEXT GFX_RGB(28, 28, 34)
 #define SIDE_MARGIN 14
 #define DEFAULT_APP_NAME "Saddev"
-#define CONFIG_PATH "/etc/saddev.conf"
 
 static struct gui_window *bar;
 static char shown_app[GUI_APP_NAME_MAX + 1];
 static uint64_t shown_minute = UINT64_MAX;
-/* Local time is UTC plus this; read once from the configuration file. */
-static int timezone_minutes;
-
-/* Reads "timezone_minutes=<n>" from the configuration file, if present. */
-static int read_timezone(void)
-{
-    char text[256];
-    int descriptor = open(CONFIG_PATH);
-    if (descriptor < 0) {
-        return 0;
-    }
-    long size = read(descriptor, text, sizeof(text) - 1);
-    close(descriptor);
-    if (size <= 0) {
-        return 0;
-    }
-    text[size] = '\0';
-    const char *setting = strstr(text, "timezone_minutes=");
-    return setting != NULL ? atoi(setting + strlen("timezone_minutes=")) : 0;
-}
-
 struct calendar {
     int year, month, day, weekday; /* weekday 0 = Sunday */
     int hour, minute;
@@ -71,7 +49,7 @@ static struct calendar calendar_from(uint64_t seconds)
 
 static uint64_t local_seconds(void)
 {
-    return wall_time() + (uint64_t)((int64_t)timezone_minutes * 60);
+    return wall_time() + (uint64_t)((int64_t)shell_settings.timezone_minutes * 60);
 }
 
 /* The mark at the left end: an original, simple shape (a ring with a dot). */
@@ -99,12 +77,24 @@ static void draw(const char *app, uint64_t now)
 
     struct calendar when = calendar_from(now);
     char clock[48];
-    snprintf(clock, sizeof(clock), "%s %d %s  %02d:%02d", weekdays[when.weekday], when.day,
-             months[when.month - 1], when.hour, when.minute);
+    if (shell_settings.clock_24_hour) {
+        snprintf(clock, sizeof(clock), "%s %d %s  %02d:%02d", weekdays[when.weekday], when.day,
+                 months[when.month - 1], when.hour, when.minute);
+    } else {
+        /* Hour 0 is 12 AM, hour 12 is 12 PM. */
+        int hour = when.hour % 12 == 0 ? 12 : when.hour % 12;
+        snprintf(clock, sizeof(clock), "%s %d %s  %d:%02d %s", weekdays[when.weekday], when.day,
+                 months[when.month - 1], hour, when.minute, when.hour < 12 ? "AM" : "PM");
+    }
     int clock_width = gfx_text_width(font_regular, clock, -1);
     gfx_draw_text(surface, font_regular, surface->width - SIDE_MARGIN - clock_width, baseline, clock, -1, BAR_TEXT);
 
     gui_window_commit(bar, gfx_surface_bounds(surface), false);
+}
+
+void menubar_invalidate(void)
+{
+    shown_minute = UINT64_MAX;
 }
 
 void menubar_update(void)
@@ -133,7 +123,6 @@ int64_t menubar_time_until_update(void)
 
 bool menubar_create(struct gui_connection *connection)
 {
-    timezone_minutes = read_timezone();
     bar = gui_window_create(connection, GUI_WINDOW_PANEL, 0, 0, gui_screen_width(connection), MENU_BAR_HEIGHT,
                             "Menu Bar", GUI_CREATE_TRANSLUCENT | GUI_CREATE_BLUR_BEHIND | GUI_CREATE_NO_FOCUS);
     if (bar == NULL) {

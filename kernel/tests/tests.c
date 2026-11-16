@@ -43,6 +43,7 @@ static const struct test_case test_cases[] = {
     { "user-desktop", test_user_desktop },
     { "user-anim", test_user_anim },
     { "user-animations", test_user_animations },
+    { "user-apps", test_user_apps },
     { "breakpoint", test_breakpoint },
     { "divide-by-zero", test_divide_by_zero },
     { "page-fault", test_page_fault },
