@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include <gui/pixel.h>
+#include <gui/rowops.h>
 
 static uint32_t *row_at(const struct gfx_surface *surface, int y)
 {
@@ -22,29 +23,13 @@ void gfx_clear(struct gfx_surface *surface, struct gfx_rect rect, gfx_color colo
     }
 }
 
-/* Blends one premultiplied pixel value over a horizontal run. */
-static void blend_span(uint32_t *row, int count, uint32_t pixel)
-{
-    uint32_t alpha = pixel >> 24;
-    if (alpha == 255) {
-        for (int x = 0; x < count; x++) {
-            row[x] = pixel;
-        }
-    } else if (alpha != 0) {
-        uint32_t keep = 255 - alpha;
-        for (int x = 0; x < count; x++) {
-            row[x] = pixel + scale_pixel(row[x], keep);
-        }
-    }
-}
-
 void gfx_fill_rect(struct gfx_surface *surface, struct gfx_rect rect, gfx_color color)
 {
     rect = gfx_rect_intersect(rect, surface->clip);
     uint32_t pixel = premultiply(color, 255);
 
     for (int y = rect.y; y < rect.y + rect.height; y++) {
-        blend_span(row_at(surface, y) + rect.x, rect.width, pixel);
+        gfx_row_fill(row_at(surface, y) + rect.x, rect.width, pixel);
     }
 }
 
@@ -72,7 +57,7 @@ void gfx_fill_gradient(struct gfx_surface *surface, struct gfx_rect rect, gfx_co
                                    div255(GFX_GREEN(top) * s + GFX_GREEN(bottom) * t),
                                    div255(GFX_BLUE(top) * s + GFX_BLUE(bottom) * t),
                                    div255(GFX_ALPHA(top) * s + GFX_ALPHA(bottom) * t));
-        blend_span(row_at(surface, y) + visible.x, visible.width, premultiply(color, 255));
+        gfx_row_fill(row_at(surface, y) + visible.x, visible.width, premultiply(color, 255));
     }
 }
 
@@ -201,13 +186,9 @@ void gfx_blend(struct gfx_surface *surface, int x, int y, const struct gfx_surfa
         const uint32_t *from = row_at(source, source_rect.y + row) + source_rect.x;
         uint32_t *to = row_at(surface, y + row) + x;
         if (opacity >= 255) {
-            for (int column = 0; column < source_rect.width; column++) {
-                to[column] = blend_over(to[column], from[column]);
-            }
+            gfx_row_blend(to, from, source_rect.width);
         } else {
-            for (int column = 0; column < source_rect.width; column++) {
-                to[column] = blend_over(to[column], scale_pixel(from[column], opacity));
-            }
+            gfx_row_blend_opacity(to, from, source_rect.width, opacity);
         }
     }
 }

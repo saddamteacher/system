@@ -133,6 +133,15 @@ void gfx_blend_scaled(struct gfx_surface *surface, struct gfx_rect target_rect, 
  */
 void gfx_box_blur(struct gfx_surface *surface, struct gfx_rect rect, int radius, int passes);
 
+/*
+ * Writes a strongly blurred copy of `source_rect` of `source` into
+ * `output`, which must be at least as large as the rectangle. Meant for
+ * "frosted glass": it works on a quarter-size copy of the image, which is
+ * about twenty times cheaper than gfx_box_blur at full size and, for a
+ * blur this strong, looks the same. Returns false if out of memory.
+ */
+bool gfx_blur_backdrop(struct gfx_surface *output, const struct gfx_surface *source, struct gfx_rect source_rect);
+
 /* ---------------------------------------------------------------- text */
 
 struct gfx_font;

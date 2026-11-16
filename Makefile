@@ -6,6 +6,7 @@
 #   make debug      boot headless, frozen, waiting for GDB on :1234
 #   make gdb        attach GDB to a `make debug` session
 #   make symbolize ADDR=0x...   turn a panic stack-trace address into a name
+#   make bench      measure the drawing operations
 #   make clean      remove build outputs (keeps the downloaded bootloader)
 #   make distclean  remove everything under build/
 
@@ -98,7 +99,7 @@ CRT0        := $(BUILD)/obj/libc/arch/$(ARCH)/crt0.asm.o
 
 # The GUI library, linked into every program; the linker takes only the
 # parts a program uses.
-LIBGUI_SRCS := $(shell find user/libgui/src -name '*.c' | sort)
+LIBGUI_SRCS := $(shell find user/libgui/src user/libgui/arch/$(ARCH) -name '*.c' | sort)
 LIBGUI_OBJS := $(LIBGUI_SRCS:%.c=$(BUILD)/obj/%.o)
 LIBGUI      := $(BUILD)/libgui.a
 
@@ -153,7 +154,7 @@ CHECK_TIMEOUT := 60
 comma := ,
 
 # ------------------------------------------------------------------ targets
-.PHONY: all run debug gdb symbolize clean distclean
+.PHONY: all run debug gdb symbolize bench demo clean distclean
 all: $(ISO)
 
 run: $(ISO)
@@ -165,6 +166,10 @@ debug: $(ISO)
 
 gdb: $(KERNEL)
 	gdb -q -x tools/gdbinit
+
+# Prints how long each drawing operation takes on this machine.
+bench: check-user-gfxbench
+	@grep '^gfxbench:' $(BUILD)/check-user-gfxbench.log
 
 symbolize: $(KERNEL)
 	$(ADDR2LINE) -f -p -e $(KERNEL) $(ADDR)
@@ -180,7 +185,7 @@ endef
 # Tests that only need to report success.
 PASS_TESTS  := printf cmdline bitmap list pmm vmm heap threads sleep mutex timed-wait thread-churn \
                boot user-hello user-syscalls user-files user-malloc user-spawn user-fpu \
-               user-sleep user-fault user-churn user-ipc user-ipc-edge user-anim
+               user-sleep user-fault user-churn user-ipc user-ipc-edge user-anim user-gfxbench user-leak user-session-leak
 # Tests with their own expectations, written out below.
 OTHER_TESTS := timer keyboard user-gfx user-compositor user-desktop user-animations user-apps breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
 
@@ -247,6 +252,15 @@ check-user-apps: $(BUILD)/test-user-apps.iso
 	@CHECK_SIDECAR="tools/qemu-apps-check.py $(APPS_QMP) $(BUILD)/check-user-apps.log $(BUILD)/apps" \
 	    $(call run-check,user-apps,$<,pass,'desktop: ready' 'sh: hello-from-the-terminal' 'compositor: exiting' \
 	    "test: 'user-apps' passed",-qmp unix:$(APPS_QMP)$(comma)server=on$(comma)wait=off)
+
+# A recorded tour of the desktop: screenshots and an animation in
+# $(BUILD)/demo (tools/qemu-demo.py). Needs no display.
+DEMO_QMP := $(BUILD)/demo.qmp
+demo: CHECK_TIMEOUT := 240
+demo: $(BUILD)/test-user-apps.iso
+	@CHECK_SIDECAR="tools/qemu-demo.py $(DEMO_QMP) $(BUILD)/check-demo.log $(BUILD)/demo" \
+	    $(call run-check,demo,$<,pass,'desktop: ready' 'compositor: exiting',-qmp unix:$(DEMO_QMP)$(comma)server=on$(comma)wait=off)
+	@echo "demo: see $(BUILD)/demo/"
 
 # The handler must return to the interrupted code, so the test still passes.
 check-breakpoint: $(BUILD)/test-breakpoint.iso

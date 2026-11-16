@@ -14,6 +14,11 @@ void *calloc(size_t count, size_t size);
 void *realloc(void *pointer, size_t size);
 void free(void *pointer);
 
+/* Bytes currently allocated with malloc and not yet freed (including the
+ * allocator's per-block bookkeeping). For finding memory leaks: the value
+ * before and after a piece of work that cleans up after itself is equal. */
+size_t malloc_bytes_in_use(void);
+
 int atoi(const char *text);
 long strtol(const char *text, char **end, int base);
 int abs(int value);

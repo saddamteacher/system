@@ -27,6 +27,15 @@ void clients_init(void)
     memset(windows, 0, sizeof(windows));
 }
 
+int clients_count(void)
+{
+    int count = 0;
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        count += clients[i].used ? 1 : 0;
+    }
+    return count;
+}
+
 void client_send(struct client *client, const struct gui_message *message)
 {
     /* Never wait for a client. If its queue is full it is not reading, and
@@ -371,6 +380,7 @@ static void window_destroy(struct window *window)
     if (window->has_pending_buffer) {
         buffer_release(&window->pending_buffer);
     }
+    gfx_surface_destroy(&window->backdrop);
     window->used = false;
     shell_notify(window); /* not `used` any more: reported as gone */
 
@@ -521,7 +531,13 @@ static void handle_commit(struct window *window, const struct gui_message *reque
         }
         shell_notify(window);
     } else if (!window->minimized) {
-        damage_add(gfx_rect_make(window->x + area.x, window->y + area.y, area.width, area.height));
+        struct gfx_rect changed = gfx_rect_make(window->x + area.x, window->y + area.y, area.width, area.height);
+        /* A panel redrawing itself changes nothing behind any panel. */
+        if (window->kind == GUI_WINDOW_PANEL) {
+            damage_add_overlay(changed);
+        } else {
+            damage_add(changed);
+        }
     }
 }
 

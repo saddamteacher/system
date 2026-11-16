@@ -84,7 +84,7 @@ static struct gfx_rect scale_about_center(struct gfx_rect rect, float scale)
 
 static void ghost_finish(struct ghost *ghost, bool log)
 {
-    damage_add(ghost->current);
+    damage_add_overlay(ghost->current);
     if (ghost->reveal != NULL) {
         ghost->reveal->animation_hidden = false;
         damage_add(window_visual_rect(ghost->reveal));
@@ -134,7 +134,7 @@ static struct ghost *ghost_start(const char *kind, struct window *window, struct
     ghost->opacity = (unsigned)(opacity_from * 255.0f);
     ghost->frames = 0;
     anim_tween_start(&ghost->tween, 0.0f, 1.0f, duration_ms * duration_scale, easing, clock_ns());
-    damage_add(from);
+    damage_add_overlay(from);
     return ghost;
 }
 
@@ -212,13 +212,13 @@ void animations_update(uint64_t now_ns)
         }
         /* Everything about the frame follows from the time alone. */
         float t = anim_tween_progress(&ghost->tween, now_ns);
-        damage_add(ghost->current);
+        damage_add_overlay(ghost->current);
         ghost->current = gfx_rect_make(lerp_int(ghost->from.x, ghost->to.x, t), lerp_int(ghost->from.y, ghost->to.y, t),
                                        lerp_int(ghost->from.width, ghost->to.width, t),
                                        lerp_int(ghost->from.height, ghost->to.height, t));
         ghost->opacity = (unsigned)(anim_lerp(ghost->opacity_from, ghost->opacity_to, t) * 255.0f + 0.5f);
         ghost->frames++;
-        damage_add(ghost->current);
+        damage_add_overlay(ghost->current);
     }
 }
 

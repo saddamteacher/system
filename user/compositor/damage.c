@@ -16,6 +16,12 @@ static bool touches(struct gfx_rect a, struct gfx_rect b)
 
 void damage_add(struct gfx_rect rect)
 {
+    render_scene_changed(rect);
+    damage_add_overlay(rect);
+}
+
+void damage_add_overlay(struct gfx_rect rect)
+{
     rect = gfx_rect_intersect(rect, gfx_surface_bounds(&screen));
     if (gfx_rect_is_empty(rect)) {
         return;

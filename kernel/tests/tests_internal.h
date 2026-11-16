@@ -48,6 +48,9 @@ bool test_user_desktop(void);
 bool test_user_anim(void);
 bool test_user_animations(void);
 bool test_user_apps(void);
+bool test_user_gfxbench(void);
+bool test_user_leak(void);
+bool test_user_session_leak(void);
 
 /* test_traps.c */
 bool test_breakpoint(void);

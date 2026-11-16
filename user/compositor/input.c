@@ -249,10 +249,10 @@ static void on_motion(int dx, int dy)
     if (dx == 0 && dy == 0) {
         return;
     }
-    damage_add(cursor_rect());
+    damage_add_overlay(cursor_rect());
     pointer_x = clamp(pointer_x + dx, 0, screen.width - 1);
     pointer_y = clamp(pointer_y + dy, 0, screen.height - 1);
-    damage_add(cursor_rect());
+    damage_add_overlay(cursor_rect());
 
     if (dragged_window != NULL) {
         /* The title bar may not slide under the menu bar. */

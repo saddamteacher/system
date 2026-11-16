@@ -18,13 +18,6 @@ struct gfx_surface back_buffer;
  * wallpaper window covers all of it). */
 #define BACKGROUND_COLOR GFX_RGB(58, 66, 98)
 
-/* Strength of the blur behind translucent panels. */
-#define BACKDROP_BLUR_RADIUS 9
-#define BACKDROP_BLUR_PASSES 2
-
-/* Scratch image for blurring what lies behind a panel; grown on demand. */
-static struct gfx_surface backdrop;
-
 bool render_init(void)
 {
     struct sd_fb_info info;
@@ -57,13 +50,15 @@ static struct gfx_rect blur_rect(const struct window *window)
     return gfx_rect_intersect(rect, gfx_surface_bounds(&back_buffer));
 }
 
-static bool ensure_backdrop(int width, int height)
+void render_scene_changed(struct gfx_rect rect)
 {
-    if (backdrop.pixels != NULL && backdrop.width >= width && backdrop.height >= height) {
-        return true;
+    for (int i = 0; i < window_stack_count; i++) {
+        struct window *window = window_stack[i];
+        if ((window->flags & GUI_CREATE_BLUR_BEHIND) && window->backdrop_valid
+            && !gfx_rect_is_empty(gfx_rect_intersect(blur_rect(window), rect))) {
+            window->backdrop_valid = false;
+        }
     }
-    gfx_surface_destroy(&backdrop);
-    return gfx_surface_create(&backdrop, width, height);
 }
 
 /* Weighted average of two pixels: `weight` of 255 gives all of `b`. */
@@ -72,28 +67,50 @@ static uint32_t mix(uint32_t a, uint32_t b, uint32_t weight)
     return scale_pixel(a, 255 - weight) + scale_pixel(b, weight);
 }
 
+/* Blurs what is composed behind a panel and keeps the result. */
+static bool refresh_backdrop(struct window *window, struct gfx_rect area)
+{
+    if (window->backdrop.pixels == NULL || window->backdrop.width < area.width
+        || window->backdrop.height < area.height) {
+        gfx_surface_destroy(&window->backdrop);
+        if (!gfx_surface_create(&window->backdrop, area.width, area.height)) {
+            return false;
+        }
+    }
+    if (!gfx_blur_backdrop(&window->backdrop, &back_buffer, area)) {
+        return false;
+    }
+    window->backdrop_valid = true;
+    return true;
+}
+
 /*
  * Draws a translucent panel over a blurred copy of what is behind it, the
- * "frosted glass" look. `area` is the panel's frosted rectangle; everything
- * below the panel has already been composed there.
+ * "frosted glass" look. `area` is the panel's frosted rectangle.
+ *
+ * Blurring is by far the most expensive thing the server does, so the
+ * blurred picture is kept. It is recomputed only after the scene behind
+ * the panel changed; the pointer passing over the panel, or the panel
+ * redrawing itself, reuses it.
  */
-static void draw_frosted(const struct window *window, struct gfx_rect area)
+static void draw_frosted(struct window *window, struct gfx_rect area)
 {
-    if (gfx_rect_is_empty(area) || !ensure_backdrop(area.width, area.height)) {
+    if (gfx_rect_is_empty(area)) {
+        return;
+    }
+    /* A refresh needs the scene behind the whole panel to be composed,
+     * which render_frame() arranged by growing the damage. */
+    if (!window->backdrop_valid && !refresh_backdrop(window, area)) {
         gfx_blend(&back_buffer, window->x, window->y, &window->buffer.surface,
                   gfx_surface_bounds(&window->buffer.surface), 255);
         return;
     }
-    struct gfx_rect local = gfx_rect_make(0, 0, area.width, area.height);
-    gfx_reset_clip(&backdrop);
-    gfx_blit(&backdrop, 0, 0, &back_buffer, area);
-    gfx_box_blur(&backdrop, local, BACKDROP_BLUR_RADIUS, BACKDROP_BLUR_PASSES);
 
     const struct gfx_surface *panel = &window->buffer.surface;
     struct gfx_rect visible = gfx_rect_intersect(area, back_buffer.clip);
     for (int y = visible.y; y < visible.y + visible.height; y++) {
         const uint32_t *panel_row = panel->pixels + (size_t)(y - window->y) * (size_t)panel->stride;
-        const uint32_t *blurred_row = backdrop.pixels + (size_t)(y - area.y) * (size_t)backdrop.stride;
+        const uint32_t *blurred_row = window->backdrop.pixels + (size_t)(y - area.y) * (size_t)window->backdrop.stride;
         uint32_t *row = back_buffer.pixels + (size_t)y * (size_t)back_buffer.stride;
 
         for (int x = visible.x; x < visible.x + visible.width; x++) {
@@ -111,7 +128,7 @@ static void draw_frosted(const struct window *window, struct gfx_rect area)
     }
 }
 
-static void draw_window(const struct window *window)
+static void draw_window(struct window *window)
 {
     if (window->kind == GUI_WINDOW_NORMAL) {
         decor_draw(&back_buffer, window, window == focused_window, true);
@@ -145,15 +162,54 @@ static void draw_window(const struct window *window)
     }
 }
 
+/* The part of a window that certainly hides everything behind it. */
+static struct gfx_rect opaque_rect(const struct window *window)
+{
+    if (window->flags & (GUI_CREATE_TRANSLUCENT | GUI_CREATE_BLUR_BEHIND)) {
+        return gfx_rect_make(0, 0, 0, 0);
+    }
+    struct gfx_rect rect = window_content_rect(window);
+    if (window->kind == GUI_WINDOW_NORMAL) {
+        rect.height -= WINDOW_CORNER_RADIUS; /* the rounded corners show what is behind */
+    }
+    return rect;
+}
+
+/*
+ * Finds where to start painting `area`. If some window covers all of it
+ * with opaque content, nothing below that window can be seen there, so
+ * painting it would be wasted work. This is the common case: an
+ * application redrawing part of its own window.
+ */
+static int first_visible_layer(struct gfx_rect area)
+{
+    for (int i = window_stack_count - 1; i >= 0; i--) {
+        const struct window *window = window_stack[i];
+        if (!window_is_drawn(window)) {
+            continue;
+        }
+        struct gfx_rect opaque = opaque_rect(window);
+        if (area.x >= opaque.x && area.y >= opaque.y && area.x + area.width <= opaque.x + opaque.width
+            && area.y + area.height <= opaque.y + opaque.height) {
+            return i;
+        }
+    }
+    return -1; /* nothing covers it: start with the background */
+}
+
 /* Composes everything that intersects `area` into the back buffer. */
 static void compose(struct gfx_rect area)
 {
     gfx_set_clip(&back_buffer, area);
-    gfx_clear(&back_buffer, area, BACKGROUND_COLOR);
+    int first = first_visible_layer(area);
+    if (first < 0) {
+        gfx_clear(&back_buffer, area, BACKGROUND_COLOR);
+        first = 0;
+    }
 
     /* Painter's algorithm: bottom to top, each window over what is below. */
-    for (int i = 0; i < window_stack_count; i++) {
-        const struct window *window = window_stack[i];
+    for (int i = first; i < window_stack_count; i++) {
+        struct window *window = window_stack[i];
         if (window_is_drawn(window) && !gfx_rect_is_empty(gfx_rect_intersect(window_visual_rect(window), area))) {
             draw_window(window);
         }
@@ -167,8 +223,9 @@ static void compose(struct gfx_rect area)
 
 /*
  * A frosted panel shows a blur of everything behind it, so a change behind
- * any part of it changes its whole frosted area. Grow damage that touches
- * such a panel to cover that area.
+ * any part of it changes its whole frosted area, and recomputing the blur
+ * needs the scene behind all of it. Grow damage that touches a panel whose
+ * blur is out of date to cover that area.
  */
 static void expand_damage_for_blur(struct gfx_rect *areas, int count)
 {
@@ -176,7 +233,8 @@ static void expand_damage_for_blur(struct gfx_rect *areas, int count)
         struct gfx_rect area = areas[i];
         for (int w = 0; w < window_stack_count; w++) {
             const struct window *window = window_stack[w];
-            if (!window_is_shown(window) || (window->flags & GUI_CREATE_BLUR_BEHIND) == 0) {
+            if (!window_is_shown(window) || (window->flags & GUI_CREATE_BLUR_BEHIND) == 0
+                || window->backdrop_valid) {
                 continue;
             }
             struct gfx_rect frosted = blur_rect(window);
@@ -185,7 +243,7 @@ static void expand_damage_for_blur(struct gfx_rect *areas, int count)
             }
         }
         /* Re-adding merges areas that now overlap. */
-        damage_add(area);
+        damage_add_overlay(area);
     }
 }
 

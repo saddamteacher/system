@@ -7,6 +7,7 @@ import json
 import re
 import socket
 import sys
+import threading
 import time
 
 from PIL import Image
@@ -27,6 +28,8 @@ class Qmp:
                     raise
                 time.sleep(0.05)
         self.stream = sock.makefile("rw")
+        # One request at a time, also when a recorder thread shares the socket.
+        self.lock = threading.Lock()
         self.stream.readline()  # greeting
         self.command("qmp_capabilities")
 
@@ -34,14 +37,15 @@ class Qmp:
         request = {"execute": name}
         if arguments:
             request["arguments"] = arguments
-        self.stream.write(json.dumps(request) + "\n")
-        self.stream.flush()
-        while True:  # skip asynchronous events
-            reply = json.loads(self.stream.readline())
-            if "return" in reply:
-                return reply["return"]
-            if "error" in reply:
-                raise RuntimeError(f"QMP {name} failed: {reply['error']}")
+        with self.lock:
+            self.stream.write(json.dumps(request) + "\n")
+            self.stream.flush()
+            while True:  # skip asynchronous events
+                reply = json.loads(self.stream.readline())
+                if "return" in reply:
+                    return reply["return"]
+                if "error" in reply:
+                    raise RuntimeError(f"QMP {name} failed: {reply['error']}")
 
     def screenshot(self, prefix, name):
         """Saves <prefix>-<name>.png and returns the image."""
@@ -130,3 +134,47 @@ class Pointer:
 
 def find_all(pattern, text):
     return re.findall(pattern, text)
+
+
+# ------------------------------------------------- using the desktop
+
+TITLE_BAR_HEIGHT = 28
+KEY_NAMES = {" ": "spc", "/": "slash", "-": "minus", ".": "dot", "\n": "ret"}
+
+
+def type_text(qmp, text, pause_s=0.07):
+    for character in text:
+        qmp.key(KEY_NAMES.get(character, character))
+        time.sleep(pause_s)
+
+
+def window_named(log, title):
+    """Geometry of the newest window with this title (a regex), from the
+    window server's log."""
+    found = find_all(rf"compositor: window (\d+) '{title}' at (-?\d+) (-?\d+) size (\d+)x(\d+)", log)
+    if not found:
+        return None
+    number, x, y, width, height = map(int, found[-1])
+    return dict(id=number, x=x, y=y, width=width, height=height)
+
+
+def launch(qmp, pointer, log_path, icon_center, ready_line, title, window_title=None):
+    """Starts an application from the dock; returns its window geometry.
+    `window_title` is the title its window carries, if not the app's name."""
+    window_title = re.escape(window_title or title)
+    pointer.move_to(*icon_center)
+    time.sleep(0.6)
+    pointer.click()
+    pointer.move_to(1000, 120)
+    wait_for(log_path, lambda text: ready_line in text, f"{title} to start ('{ready_line}')")
+    window = wait_for(log_path, lambda text: window_named(text, window_title), f"{title}'s window")
+    wait_for(log_path, lambda text: f"animation open window {window['id']}" in text, f"{title} to finish opening")
+    time.sleep(0.4)
+    return window
+
+
+def close_window(pointer, log_path, window, title):
+    pointer.move_to(window["x"] + 18, window["y"] - TITLE_BAR_HEIGHT // 2)  # the red button
+    pointer.click()
+    pointer.move_to(1000, 120)
+    wait_for(log_path, lambda text: f"animation close window {window['id']}" in text, f"{title} to close")

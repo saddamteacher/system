@@ -137,3 +137,4 @@ take spinlocks (which every other user holds with interrupts disabled).
 - [09 - The desktop](09-desktop.md)
 - [10 - Animations](10-animations.md)
 - [11 - Applications](11-apps.md)
+- [12 - Polish: measuring, speeding up, leak checks, demo](12-polish.md)

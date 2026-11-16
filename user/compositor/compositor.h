@@ -78,6 +78,11 @@ struct window {
     int wanted_width, wanted_height;
     bool resize_outstanding;
 
+    /* For frosted panels: the blurred picture of what lies behind, kept
+     * until something behind the panel changes (see render.c). */
+    struct gfx_surface backdrop;
+    bool backdrop_valid;
+
     /* Zoom (maximize) toggles between the work area and this. */
     bool zoomed;
     struct gfx_rect unzoomed_rect;
@@ -154,8 +159,13 @@ void decor_draw_content(struct gfx_surface *target, const struct window *window)
 
 /* ------------------------------------------------------------ damage */
 
-/* Records that part of the screen must be redrawn. */
+/* Records that part of the screen must be redrawn because the scene (the
+ * wallpaper or an application window) changed there. */
 void damage_add(struct gfx_rect rect);
+/* The same for things drawn on top of the scene: the pointer, animation
+ * images, a panel's own content. What lies behind panels is unchanged, so
+ * their blurred backdrops stay valid. */
+void damage_add_overlay(struct gfx_rect rect);
 bool damage_pending(void);
 /* Moves the recorded rectangles to `out` (at most `capacity`); returns how
  * many there were. The record is empty afterwards. */
@@ -170,6 +180,8 @@ extern struct gfx_surface back_buffer; /* where frames are composed */
 bool render_init(void);
 /* Redraws all damaged areas and copies them to the display. */
 void render_frame(void);
+/* The scene changed inside `rect`: frosted panels over it must re-blur. */
+void render_scene_changed(struct gfx_rect rect);
 
 /* ------------------------------------------------------------- input */
 
@@ -185,6 +197,16 @@ void input_handle_keyboard(void);
 void input_window_gone(struct window *window);
 struct gfx_rect cursor_rect(void);
 void cursor_draw(struct gfx_surface *target);
+
+/* ------------------------------------------------------- leak watch */
+
+/* Notes how much memory the server uses in its current situation. Call
+ * between frames, when no animation is running. */
+void leakwatch_sample(void);
+/* Prints the verdict; false if memory grew or nothing could be compared. */
+bool leakwatch_report(void);
+/* How many clients are connected. */
+int clients_count(void);
 
 /* -------------------------------------------------------- animations */
 

@@ -5,6 +5,8 @@
  *   --test   log window and pointer activity; F12 quits
  *   --stats  log frame statistics once per second
  *   --animation-scale=N  make window animations N times slower
+ *   --run-for=MS  exit by itself after MS milliseconds and report whether
+ *                 its memory use grew meanwhile (for unattended tests)
  */
 #include "compositor.h"
 
@@ -22,6 +24,8 @@
 bool option_test_mode;
 static bool option_stats;
 static bool quit_requested;
+/* When to exit by itself; 0 = never. */
+static uint64_t run_until_ns;
 
 void compositor_log(const char *format, ...)
 {
@@ -130,6 +134,9 @@ int main(int argc, char **argv)
         if (strncmp(argv[i], "--animation-scale=", 18) == 0) {
             animations_set_scale((unsigned)atoi(argv[i] + 18));
         }
+        if (strncmp(argv[i], "--run-for=", 10) == 0) {
+            run_until_ns = clock_ns() + (uint64_t)atoi(argv[i] + 10) * NS_PER_MS;
+        }
     }
 
     if (!render_init() || !input_init()) {
@@ -159,6 +166,16 @@ int main(int argc, char **argv)
          * something happens. */
         bool frame_needed = damage_pending() || windows_any_frame_requested() || animations_active();
         int64_t timeout = frame_needed ? timeout_until(next_frame_ns) : -1;
+        if (run_until_ns != 0) {
+            if (clock_ns() >= run_until_ns) {
+                break;
+            }
+            /* Do not sleep past the time to leave. */
+            int64_t remaining_ms = (int64_t)((run_until_ns - clock_ns()) / NS_PER_MS) + 1;
+            if (timeout < 0 || timeout > remaining_ms) {
+                timeout = remaining_ms;
+            }
+        }
 
         int ready = poll_fds(descriptors, (size_t)(3 + client_count), timeout);
         if (ready > 0) {
@@ -198,6 +215,9 @@ int main(int argc, char **argv)
         uint64_t finished = clock_ns();
         windows_send_frame_events(finished / NS_PER_MS);
         stats_record(now, finished);
+        if (run_until_ns != 0 && !animations_active()) {
+            leakwatch_sample();
+        }
 
         next_frame_ns += FRAME_INTERVAL_NS;
         if (next_frame_ns < finished) {
@@ -208,5 +228,6 @@ int main(int argc, char **argv)
     }
 
     printf("compositor: exiting\n");
-    return 0;
+    /* An unattended run doubles as a leak check of the server itself. */
+    return run_until_ns == 0 || leakwatch_report() ? 0 : 1;
 }

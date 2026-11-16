@@ -162,3 +162,60 @@ void gfx_blend_scaled(struct gfx_surface *surface, struct gfx_rect target_rect, 
         }
     }
 }
+
+/* ---------------------------------------------------------- backdrop blur */
+
+/* The image is shrunk by this factor in each direction before blurring. */
+#define BACKDROP_SHRINK 4
+#define BACKDROP_BLUR_RADIUS 2 /* at the small size: about 8 pixels at full size */
+#define BACKDROP_BLUR_PASSES 2
+
+/* Averages each BACKDROP_SHRINK x BACKDROP_SHRINK block of `rect` into one
+ * pixel of `small`. Averaging is itself a blur, and a correct one. */
+static void shrink(struct gfx_surface *small, const struct gfx_surface *source, struct gfx_rect rect)
+{
+    for (int y = 0; y < small->height; y++) {
+        uint32_t *out = small->pixels + (size_t)y * (size_t)small->stride;
+        for (int x = 0; x < small->width; x++) {
+            struct sums sums = { 0, 0, 0, 0 };
+            unsigned count = 0;
+            /* Blocks at the right and bottom edges may be incomplete. */
+            for (int by = 0; by < BACKDROP_SHRINK && y * BACKDROP_SHRINK + by < rect.height; by++) {
+                const uint32_t *row = source->pixels
+                                    + (size_t)(rect.y + y * BACKDROP_SHRINK + by) * (size_t)source->stride + rect.x;
+                for (int bx = 0; bx < BACKDROP_SHRINK && x * BACKDROP_SHRINK + bx < rect.width; bx++) {
+                    sums_add(&sums, row[x * BACKDROP_SHRINK + bx]);
+                    count++;
+                }
+            }
+            out[x] = ((sums.alpha / count) << 24) | ((sums.red / count) << 16) | ((sums.green / count) << 8)
+                   | (sums.blue / count);
+        }
+    }
+}
+
+bool gfx_blur_backdrop(struct gfx_surface *output, const struct gfx_surface *source, struct gfx_rect source_rect)
+{
+    source_rect = gfx_rect_intersect(source_rect, gfx_surface_bounds(source));
+    if (gfx_rect_is_empty(source_rect)) {
+        return true;
+    }
+    struct gfx_surface small;
+    if (!gfx_surface_create(&small, (source_rect.width + BACKDROP_SHRINK - 1) / BACKDROP_SHRINK,
+                            (source_rect.height + BACKDROP_SHRINK - 1) / BACKDROP_SHRINK)) {
+        return false;
+    }
+    shrink(&small, source, source_rect);
+    gfx_box_blur(&small, gfx_surface_bounds(&small), BACKDROP_BLUR_RADIUS, BACKDROP_BLUR_PASSES);
+
+    /* Stretch back to full size; the smooth sampling hides the blocks. */
+    struct gfx_rect saved_clip = output->clip;
+    struct gfx_rect target = gfx_rect_make(0, 0, source_rect.width, source_rect.height);
+    gfx_set_clip(output, target);
+    gfx_clear(output, target, GFX_TRANSPARENT);
+    gfx_blend_scaled(output, gfx_rect_make(0, 0, small.width * BACKDROP_SHRINK, small.height * BACKDROP_SHRINK), &small,
+                     gfx_surface_bounds(&small), 255);
+    output->clip = saved_clip;
+    gfx_surface_destroy(&small);
+    return true;
+}

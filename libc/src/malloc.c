@@ -39,6 +39,12 @@ struct arena {
 
 static struct free_link free_list = { &free_list, &free_list };
 static size_t arena_count;
+static size_t bytes_in_use;
+
+size_t malloc_bytes_in_use(void)
+{
+    return bytes_in_use;
+}
 
 static size_t block_size(const struct block *block)
 {
@@ -144,6 +150,7 @@ void *malloc(size_t size)
         needed = available;
     }
     block->size_and_flags = needed | BLOCK_USED;
+    bytes_in_use += needed;
     return (char *)block + sizeof(struct block);
 }
 
@@ -157,6 +164,7 @@ void free(void *pointer)
         abort(); /* double free or a pointer that never came from malloc */
     }
     size_t size = block_size(block);
+    bytes_in_use -= size;
 
     struct block *next = next_block(block);
     if (!block_is_used(next)) {

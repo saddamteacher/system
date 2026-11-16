@@ -14,56 +14,19 @@ import re
 import sys
 import time
 
-from qmplib import Pointer, Qmp, find_all, read_log, wait_for
+from qmplib import (Pointer, Qmp, close_window, find_all, launch, read_log, type_text,
+                    wait_for)
 
-TITLE_BAR_HEIGHT = 28
 MENU_BAR_HEIGHT = 26
-KEY_NAMES = {" ": "spc", "/": "slash", "-": "minus", ".": "dot", "\n": "ret"}
 
 
 def fail(message):
     sys.exit(f"check: {message}")
 
 
-def type_text(qmp, text):
-    for character in text:
-        qmp.key(KEY_NAMES.get(character, character))
-        time.sleep(0.07)
-
-
-def window_named(log, title):
-    found = find_all(rf"compositor: window (\d+) '{title}' at (-?\d+) (-?\d+) size (\d+)x(\d+)", log)
-    if not found:
-        return None
-    number, x, y, width, height = map(int, found[-1])
-    return dict(id=number, x=x, y=y, width=width, height=height)
-
-
 def changed_pixels(image, reference, region):
     a, b = image.load(), reference.load()
     return sum(1 for y in range(region[1], region[3]) for x in range(region[0], region[2]) if a[x, y] != b[x, y])
-
-
-def launch(qmp, pointer, log_path, icon_center, ready_line, title, window_title=None):
-    """Starts an application from the dock; returns its window geometry.
-    `window_title` is the title its window carries, if not the app's name."""
-    window_title = re.escape(window_title or title)
-    pointer.move_to(*icon_center)
-    time.sleep(0.6)
-    pointer.click()
-    pointer.move_to(1000, 120)
-    wait_for(log_path, lambda text: ready_line in text, f"{title} to start ('{ready_line}')")
-    window = wait_for(log_path, lambda text: window_named(text, window_title), f"{title}'s window")
-    wait_for(log_path, lambda text: f"animation open window {window['id']}" in text, f"{title} to finish opening")
-    time.sleep(0.4)
-    return window
-
-
-def close_window(pointer, log_path, window, title):
-    pointer.move_to(window["x"] + 18, window["y"] - TITLE_BAR_HEIGHT // 2)  # the red button
-    pointer.click()
-    pointer.move_to(1000, 120)
-    wait_for(log_path, lambda text: f"animation close window {window['id']}" in text, f"{title} to close")
 
 
 def main():

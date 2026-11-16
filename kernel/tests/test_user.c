@@ -34,6 +34,8 @@ static bool run_program(const char *path, const char *argument, int expected_exi
     return true;
 }
 
+static bool run_program_leak_checked(const char *path);
+
 bool test_boot(void)
 {
     return run_program("/bin/init", "--once", 0);
@@ -87,6 +89,23 @@ bool test_user_compositor(void)
 bool test_user_animations(void)
 {
     return run_program("/test/desktop-session", "slow", 0);
+}
+
+bool test_user_leak(void)
+{
+    return run_program("/test/leak", NULL, 0);
+}
+
+/* A whole graphical session, twice: every window, buffer, channel, port
+ * and process it used must be gone afterwards. */
+bool test_user_session_leak(void)
+{
+    return run_program_leak_checked("/test/leak-session");
+}
+
+bool test_user_gfxbench(void)
+{
+    return run_program("/test/gfxbench", NULL, 0);
 }
 
 bool test_user_apps(void)
