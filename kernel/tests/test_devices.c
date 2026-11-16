@@ -8,6 +8,7 @@
 #include <core/log.h>
 #include <core/time.h>
 #include <drivers/keyboard/keyboard.h>
+#include <sched/thread.h>
 
 #define TIMER_TEST_MS 1000
 #define TIMER_TOLERANCE_PERCENT 1
@@ -81,7 +82,7 @@ bool test_keyboard(void)
                 log_error("keyboard test: timed out after %zu presses, %zu releases", presses, releases);
                 return false;
             }
-            arch_cpu_idle();
+            thread_sleep_ms(5);
             continue;
         }
         keyboard_log_event(&event);

@@ -14,6 +14,7 @@
 #include <mm/heap.h>
 #include <mm/pmm.h>
 #include <mm/vmm.h>
+#include <sched/thread.h>
 #include <tests/tests.h>
 
 #define BOOT_STACK_PAGES 16
@@ -61,35 +62,45 @@ static void devices_init(void)
     }
 }
 
-#define HEARTBEAT_INTERVAL_MS 1000
+#define HEARTBEAT_INTERVAL_MS 5000
 
-/* Until there is a scheduler, this loop is all the kernel does once booted:
- * sleep until an interrupt, then report what happened. */
-_Noreturn static void idle_loop(void)
+/* Logs every key event. Blocks while there is nothing to report. */
+static void key_logger_thread(void *argument)
 {
-    uint64_t next_heartbeat = time_now_ms() + HEARTBEAT_INTERVAL_MS;
-
+    (void)argument;
     for (;;) {
         struct key_event event;
-        while (keyboard_read_event(&event)) {
-            keyboard_log_event(&event);
-        }
-        if (time_now_ms() >= next_heartbeat) {
-            log_info("time: up %llu s, %llu ticks", (unsigned long long)(time_now_ms() / 1000),
-                     (unsigned long long)time_ticks());
-            next_heartbeat += HEARTBEAT_INTERVAL_MS;
-        }
-        arch_cpu_idle();
+        keyboard_wait_event(&event);
+        keyboard_log_event(&event);
     }
 }
 
-/* Second half of boot, running on a stack the kernel allocated itself. */
-static void kmain_on_kernel_stack(void)
+static void heartbeat_thread(void *argument)
 {
-    devices_init();
-    /* Every handler is installed; from here on the kernel is interrupted. */
-    arch_irq_enable();
+    (void)argument;
+    for (;;) {
+        thread_sleep_ms(HEARTBEAT_INTERVAL_MS);
+        struct sched_stats stats = sched_stats();
+        log_info("time: up %llu s, %llu context switches, %llu threads",
+                 (unsigned long long)(time_now_ms() / 1000), (unsigned long long)stats.context_switches,
+                 (unsigned long long)stats.live_threads);
+    }
+}
 
+static void start_detached(const char *name, thread_entry_fn entry)
+{
+    struct thread *thread = thread_create(name, entry, NULL);
+    if (thread == NULL) {
+        panic("boot: out of memory creating thread '%s'", name);
+    }
+    thread_detach(thread);
+}
+
+/* The first real thread. Unlike the boot context, which becomes the idle
+ * thread, this one is allowed to sleep and block. */
+static void main_thread(void *argument)
+{
+    (void)argument;
     const char *cmdline = arch_boot_cmdline();
     log_info("boot: command line \"%s\"", cmdline);
 
@@ -98,7 +109,22 @@ static void kmain_on_kernel_stack(void)
 
     /* Lets `make check` finish immediately; a no-op under `make run`. */
     arch_debug_exit(ARCH_DEBUG_EXIT_SUCCESS);
-    idle_loop();
+
+    start_detached("key-logger", key_logger_thread);
+    start_detached("heartbeat", heartbeat_thread);
+}
+
+/* Second half of boot, running on a stack the kernel allocated itself. */
+static void kmain_on_kernel_stack(void)
+{
+    devices_init();
+    sched_init();
+    /* Every handler is installed; from here on the kernel is interrupted,
+     * and with the tick comes preemption. */
+    arch_irq_enable();
+
+    start_detached("main", main_thread);
+    sched_idle_loop();
 }
 
 _Noreturn void kmain(void)
@@ -106,7 +132,7 @@ _Noreturn void kmain(void)
     /* Logging first: everything after this can report what it does. */
     serial_init();
     log_set_sink(serial_write);
-    log_info("Lumen kernel starting");
+    log_info("Saddev kernel starting");
 
     const char *problem = arch_boot_problem();
     if (problem != NULL) {

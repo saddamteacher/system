@@ -9,7 +9,7 @@
 #   make clean      remove build outputs (keeps the downloaded bootloader)
 #   make distclean  remove everything under build/
 
-OS_NAME := lumen
+OS_NAME := saddev
 ARCH    := x86_64
 BUILD   := build
 
@@ -120,7 +120,7 @@ tools/check-serial.sh $(1) $(BUILD)/check-$(1).log $(CHECK_TIMEOUT) $(3) $(4) --
 endef
 
 # Tests that only need to report success.
-PASS_TESTS  := printf cmdline bitmap list pmm vmm heap
+PASS_TESTS  := printf cmdline bitmap list pmm vmm heap threads sleep mutex thread-churn
 # Tests with their own expectations, written out below.
 OTHER_TESTS := boot timer keyboard breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
 

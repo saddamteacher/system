@@ -53,6 +53,10 @@ bool keyboard_init(void);
  * blocks; safe to call from any context. */
 bool keyboard_read_event(struct key_event *event);
 
+/* Like keyboard_read_event(), but sleeps until an event is available.
+ * Thread context only. */
+void keyboard_wait_event(struct key_event *event);
+
 /* For hardware drivers: reports that a key went down or up. Called in
  * interrupt context. */
 void keyboard_report(enum key_code code, bool pressed);

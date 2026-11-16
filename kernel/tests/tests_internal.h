@@ -22,6 +22,12 @@ bool test_heap(void);
 bool test_timer(void);
 bool test_keyboard(void);
 
+/* test_sched.c */
+bool test_threads(void);
+bool test_sleep(void);
+bool test_mutex(void);
+bool test_thread_churn(void);
+
 /* test_traps.c */
 bool test_breakpoint(void);
 bool test_divide_by_zero(void);

@@ -12,11 +12,21 @@
 #include <core/panic.h>
 
 static atomic_uint_fast64_t ticks;
+/* Written once, during boot, before the first thread is created. */
+static void (*tick_hook)(void);
 
 /* Runs in interrupt context, TIME_TICK_HZ times per second. */
 static void on_tick(void)
 {
     atomic_fetch_add_explicit(&ticks, 1, memory_order_relaxed);
+    if (tick_hook != NULL) {
+        tick_hook();
+    }
+}
+
+void time_set_tick_hook(void (*hook)(void))
+{
+    tick_hook = hook;
 }
 
 void time_init(void)
@@ -37,14 +47,4 @@ uint64_t time_ticks(void)
 uint64_t time_now_ms(void)
 {
     return time_ticks() * TIME_MS_PER_TICK;
-}
-
-void time_wait_ms(uint64_t milliseconds)
-{
-    uint64_t deadline = time_now_ms() + milliseconds;
-    while (time_now_ms() < deadline) {
-        /* Every tick wakes the CPU, so the deadline is noticed within one
-         * tick even if this particular wake-up was for something else. */
-        arch_cpu_idle();
-    }
 }

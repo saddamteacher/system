@@ -2,7 +2,7 @@
 # boot():/ is the volume Limine itself was loaded from.
 timeout: 0
 
-/Lumen
+/Saddev
     protocol: limine
     path: boot():/boot/kernel.elf
     cmdline: @CMDLINE@

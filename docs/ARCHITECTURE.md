@@ -1,8 +1,7 @@
 # Architecture
 
-Lumen is a from-scratch x86_64 hobby operating system with a desktop
-environment that runs entirely in userspace. ("Lumen" is a working name; it is
-set in one place, `OS_NAME` in the Makefile, plus the boot menu entry.)
+Saddev is a from-scratch x86_64 hobby operating system with a desktop
+environment that runs entirely in userspace.
 
 This document describes the layering rules. Each subsystem has its own design
 note in this folder, added in the phase that builds it.
@@ -19,8 +18,9 @@ libc                             userland C library
 --------------------------------- syscall boundary ---------------------------
 kernel/syscall                   syscall table and handlers
 kernel/fs  kernel/ipc            VFS, message passing, shared memory
-kernel/sched                     tasks, threads, scheduler
-kernel/mm  kernel/drivers        memory management, device drivers
+kernel/drivers                   device drivers (may block, so above sched)
+kernel/sched                     threads, scheduler, wait queues, mutex
+kernel/mm                        memory management
 kernel/core                      panic, logging, locks, lists, time
 arch/x86_64                      everything CPU-specific
 boot                             Limine config, linker script
@@ -48,12 +48,13 @@ boot                             Limine config, linker script
 | Path | Contents |
 |---|---|
 | `boot/` | `limine.conf.in` boot menu template, `linker.ld` kernel image layout |
-| `arch/include/arch/` | arch interface: `boot.h`, `cpu.h`, `debug_uart.h`, `irq.h`, `mmu.h`, `ps2.h`, `timer.h`, `trap.h` |
+| `arch/include/arch/` | arch interface: `boot.h`, `context.h`, `cpu.h`, `debug_uart.h`, `irq.h`, `mmu.h`, `ps2.h`, `timer.h`, `trap.h` |
 | `arch/x86_64/boot/` | `_start` (NASM), Limine requests |
 | `arch/x86_64/` | GDT/TSS, IDT, interrupt entry stubs, trap dispatch, paging, port I/O, ACPI tables, PIC, PIT, local APIC, I/O APIC, IRQ dispatch |
 | `kernel/main.c` | `kmain`, the composition root that wires subsystems together |
 | `kernel/core/` | string functions, printf, log, spinlock, panic, command line, list, bitmap, time |
 | `kernel/mm/` | frame allocator (`pmm`), kernel virtual memory (`vmm`), heap |
+| `kernel/sched/` | threads, round-robin scheduler, wait queues, mutex |
 | `kernel/drivers/serial/` | 16550 UART driver |
 | `kernel/drivers/ps2/` | PS/2 controller (8042) driver |
 | `kernel/drivers/keyboard/` | key events and queue; PS/2 scancode decoder |
@@ -85,8 +86,11 @@ Two rules that follow from the layering and are easy to get wrong:
 ## Lock order
 
 Locks are always taken in this order, never the reverse:
-heap lock, then vmm lock, then pmm lock. The log lock and the keyboard queue
-lock are leaves: nothing is acquired while holding them.
+heap lock, then vmm lock, then pmm lock.
+
+A lock that protects a waited-for condition (a mutex's internal lock, the
+keyboard queue lock) is taken before the scheduler lock. The scheduler lock
+and the log lock are leaves: nothing is acquired while holding them.
 
 ## Interrupt context
 
@@ -100,3 +104,4 @@ take spinlocks (which every other user holds with interrupts disabled).
 - [01 - Core: logging, panic, descriptor tables, traps](01-core.md)
 - [02 - Memory: frames, paging, heap](02-memory.md)
 - [03 - Interrupts, time and the keyboard](03-interrupts.md)
+- [04 - Threads and scheduling](04-scheduling.md)

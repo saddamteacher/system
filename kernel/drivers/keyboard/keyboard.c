@@ -3,7 +3,8 @@
  * keys to characters and queues events.
  *
  * State (protected by `lock`): the event queue and the modifier state. The
- * writer is the keyboard interrupt, the reader any kernel code.
+ * writer is the keyboard interrupt, the readers are threads.
+ * Lock order: keyboard lock, then the scheduler lock (inside the wait queue).
  */
 #include <drivers/keyboard/keyboard.h>
 
@@ -11,6 +12,7 @@
 
 #include <core/log.h>
 #include <core/spinlock.h>
+#include <sched/wait_queue.h>
 
 #define QUEUE_CAPACITY 64
 
@@ -68,6 +70,9 @@ static struct key_event queue[QUEUE_CAPACITY];
 static size_t queue_head;  /* index of the oldest event */
 static size_t queue_count;
 static uint8_t modifiers;
+/* Threads blocked in keyboard_wait_event(). Initialised statically because
+ * the interrupt handler may use it before any thread does. */
+static struct wait_queue readers = { .waiters = { &readers.waiters, &readers.waiters } };
 
 const char *keyboard_key_name(enum key_code code)
 {
@@ -150,8 +155,26 @@ void keyboard_report(enum key_code code, bool pressed)
             .character = character_for_key(code),
         };
         queue_count++;
+        wait_queue_wake_one(&readers);
     }
 
+    spinlock_release(&lock, irq_state);
+}
+
+static void pop_event_locked(struct key_event *event)
+{
+    *event = queue[queue_head];
+    queue_head = (queue_head + 1) % QUEUE_CAPACITY;
+    queue_count--;
+}
+
+void keyboard_wait_event(struct key_event *event)
+{
+    arch_irq_state_t irq_state = spinlock_acquire(&lock);
+    while (queue_count == 0) {
+        wait_queue_wait(&readers, &lock);
+    }
+    pop_event_locked(event);
     spinlock_release(&lock, irq_state);
 }
 
@@ -161,9 +184,7 @@ bool keyboard_read_event(struct key_event *event)
 
     bool available = queue_count > 0;
     if (available) {
-        *event = queue[queue_head];
-        queue_head = (queue_head + 1) % QUEUE_CAPACITY;
-        queue_count--;
+        pop_event_locked(event);
     }
 
     spinlock_release(&lock, irq_state);

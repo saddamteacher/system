@@ -38,4 +38,21 @@ static inline void spinlock_release(struct spinlock *lock, arch_irq_state_t irq_
     arch_irq_restore(irq_state);
 }
 
+/*
+ * Variants that leave the interrupt state alone. For code that already runs
+ * with interrupts disabled and must hand a lock over across a context
+ * switch (the scheduler), where "restore the state I saved" has no meaning.
+ */
+static inline void spinlock_acquire_raw(struct spinlock *lock)
+{
+    while (atomic_flag_test_and_set_explicit(&lock->locked, memory_order_acquire)) {
+        arch_cpu_relax();
+    }
+}
+
+static inline void spinlock_release_raw(struct spinlock *lock)
+{
+    atomic_flag_clear_explicit(&lock->locked, memory_order_release);
+}
+
 #endif

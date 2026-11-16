@@ -94,9 +94,8 @@ QEMU's nominal 1 GHz.
 ## Time base
 
 `kernel/core/time` counts ticks in an atomic 64-bit counter written only by
-the timer interrupt. `time_now_ms()` is derived from it. `time_wait_ms`
-sleeps with `arch_cpu_idle()` until the deadline; it blocks the whole kernel
-and is a stop-gap until threads exist.
+the timer interrupt. `time_now_ms()` is derived from it. One hook function can be
+installed to run on every tick; the scheduler uses it.
 
 `arch_cpu_idle` is `sti; hlt`. `sti` takes effect after the next
 instruction, so an interrupt cannot arrive between enabling and halting; if
@@ -126,12 +125,8 @@ keeps that small state machine and calls `keyboard_report(key, pressed)`.
 (caps lock toggles on press; shift undoes caps lock for letters), looks up
 the character for the US layout, and puts a `struct key_event` into a
 64-entry ring buffer protected by a spinlock. When the buffer is full the
-newest event is dropped. `keyboard_read_event` never blocks.
-
-## After boot
-
-With no scheduler yet, `kmain` ends in `idle_loop`: sleep until an
-interrupt, log any key events, log an uptime line once per second.
+newest event is dropped. `keyboard_read_event` never blocks;
+`keyboard_wait_event` sleeps on a wait queue until a key arrives.
 
 ## Checks
 

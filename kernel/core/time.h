@@ -18,10 +18,10 @@ uint64_t time_ticks(void);
 uint64_t time_now_ms(void);
 
 /*
- * Sleeps the CPU until `milliseconds` have passed. Interrupts are enabled
- * while waiting and stay enabled afterwards. A stop-gap until threads exist
- * (Phase 4): it blocks the whole kernel.
+ * Installs a function called on every tick, in interrupt context, after the
+ * counter was advanced. One hook; the scheduler uses it for preemption.
+ * Passing a layer above core in by pointer keeps core independent of it.
  */
-void time_wait_ms(uint64_t milliseconds);
+void time_set_tick_hook(void (*hook)(void));
 
 #endif
