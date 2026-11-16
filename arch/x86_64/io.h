@@ -26,4 +26,11 @@ static inline void io_out32(uint16_t port, uint32_t value)
     __asm__ volatile("outl %0, %1" : : "a"(value), "Nd"(port));
 }
 
+static inline uint32_t io_in32(uint16_t port)
+{
+    uint32_t value;
+    __asm__ volatile("inl %1, %0" : "=a"(value) : "Nd"(port));
+    return value;
+}
+
 #endif

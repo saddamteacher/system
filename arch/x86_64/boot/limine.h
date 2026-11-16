@@ -120,4 +120,20 @@ struct limine_executable_address_request {
     struct limine_executable_address_response *response;
 };
 
+/* ACPI Root System Description Pointer: where the firmware's hardware
+ * description tables start. A physical address from base revision 3 on. */
+#define LIMINE_RSDP_REQUEST_ID \
+    { LIMINE_COMMON_MAGIC, 0xc5e77b6b397e7b43ULL, 0x27637845accdcf3cULL }
+
+struct limine_rsdp_response {
+    uint64_t revision;
+    uint64_t address;
+};
+
+struct limine_rsdp_request {
+    uint64_t id[4];
+    uint64_t revision;
+    struct limine_rsdp_response *response;
+};
+
 #endif

@@ -48,15 +48,17 @@ boot                             Limine config, linker script
 | Path | Contents |
 |---|---|
 | `boot/` | `limine.conf.in` boot menu template, `linker.ld` kernel image layout |
-| `arch/include/arch/` | arch interface: `boot.h`, `cpu.h`, `debug_uart.h`, `mmu.h`, `trap.h` |
+| `arch/include/arch/` | arch interface: `boot.h`, `cpu.h`, `debug_uart.h`, `irq.h`, `mmu.h`, `ps2.h`, `timer.h`, `trap.h` |
 | `arch/x86_64/boot/` | `_start` (NASM), Limine requests |
-| `arch/x86_64/` | GDT/TSS, IDT, interrupt entry stubs, trap dispatch, paging, port I/O |
+| `arch/x86_64/` | GDT/TSS, IDT, interrupt entry stubs, trap dispatch, paging, port I/O, ACPI tables, PIC, PIT, local APIC, I/O APIC, IRQ dispatch |
 | `kernel/main.c` | `kmain`, the composition root that wires subsystems together |
-| `kernel/core/` | string functions, printf, log, spinlock, panic, command line, list, bitmap |
+| `kernel/core/` | string functions, printf, log, spinlock, panic, command line, list, bitmap, time |
 | `kernel/mm/` | frame allocator (`pmm`), kernel virtual memory (`vmm`), heap |
 | `kernel/drivers/serial/` | 16550 UART driver |
+| `kernel/drivers/ps2/` | PS/2 controller (8042) driver |
+| `kernel/drivers/keyboard/` | key events and queue; PS/2 scancode decoder |
 | `kernel/tests/` | in-kernel self-tests selected with `test=<name>` |
-| `tools/` | host setup, ISO builder, serial check runner, GDB script |
+| `tools/` | host setup, ISO builder, serial check runner, QMP key injector, GDB script |
 
 Two rules that follow from the layering and are easy to get wrong:
 
@@ -83,11 +85,18 @@ Two rules that follow from the layering and are easy to get wrong:
 ## Lock order
 
 Locks are always taken in this order, never the reverse:
-heap lock, then vmm lock, then pmm lock. The log lock is a leaf: nothing is
-acquired while holding it.
+heap lock, then vmm lock, then pmm lock. The log lock and the keyboard queue
+lock are leaves: nothing is acquired while holding them.
+
+## Interrupt context
+
+Device and timer handlers run with interrupts disabled on the stack of
+whatever was interrupted. They must be short, must not block, and may only
+take spinlocks (which every other user holds with interrupts disabled).
 
 ## Design notes
 
 - [00 - Toolchain and boot](00-toolchain.md)
 - [01 - Core: logging, panic, descriptor tables, traps](01-core.md)
 - [02 - Memory: frames, paging, heap](02-memory.md)
+- [03 - Interrupts, time and the keyboard](03-interrupts.md)

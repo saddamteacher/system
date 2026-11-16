@@ -12,4 +12,7 @@ uint64_t boot_hhdm_offset(void);
 uint64_t boot_kernel_physical_base(void);
 uint64_t boot_kernel_virtual_base(void);
 
+/* Physical address of the ACPI root pointer, or 0 if there is none. */
+uint64_t boot_rsdp_address(void);
+
 #endif

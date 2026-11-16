@@ -7,6 +7,10 @@
 # pass:  the kernel must report success through the debug-exit device.
 # panic: the kernel must report failure, i.e. it must have panicked.
 # Every regex must match some line of the serial log.
+#
+# If the environment variable CHECK_SIDECAR is set, it is run as a shell
+# command alongside QEMU (used to inject keyboard input) and stopped when
+# QEMU exits.
 set -u
 
 NAME="$1"; LOG="$2"; TIMEOUT="$3"; OUTCOME="$4"
@@ -36,13 +40,26 @@ while [ "$i" -lt "$count" ]; do
 done
 shift # the "--"
 
+: > "$LOG"
+sidecar_pid=""
+if [ -n "${CHECK_SIDECAR:-}" ]; then
+    sh -c "$CHECK_SIDECAR" > "$LOG.sidecar" 2>&1 &
+    sidecar_pid=$!
+fi
+
 timeout "$TIMEOUT" "$@" > "$LOG" 2>&1
 status=$?
+
+if [ -n "$sidecar_pid" ]; then
+    kill "$sidecar_pid" 2>/dev/null
+    wait "$sidecar_pid" 2>/dev/null
+fi
 
 fail() {
     echo "--- serial log ($LOG) ---"
     cat "$LOG"
     echo "--- end of serial log ---"
+    [ -s "$LOG.sidecar" ] && { echo "--- sidecar output ---"; cat "$LOG.sidecar"; }
     echo "CHECK FAILED [$NAME]: $1"
     exit 1
 }

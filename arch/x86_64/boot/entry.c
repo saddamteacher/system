@@ -45,6 +45,11 @@ static volatile struct limine_executable_address_request address_request = {
     .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST_ID,
 };
 
+LIMINE_SECTION(".limine_requests")
+static volatile struct limine_rsdp_request rsdp_request = {
+    .id = LIMINE_RSDP_REQUEST_ID,
+};
+
 LIMINE_SECTION(".limine_requests_end")
 static volatile uint64_t requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
@@ -135,4 +140,10 @@ uint64_t boot_kernel_physical_base(void)
 uint64_t boot_kernel_virtual_base(void)
 {
     return address_request.response->virtual_base;
+}
+
+uint64_t boot_rsdp_address(void)
+{
+    const struct limine_rsdp_response *response = rsdp_request.response;
+    return response != NULL ? response->address : 0;
 }

@@ -34,6 +34,15 @@ void vmm_free_pages(void *base, size_t count);
 void *vmm_alloc_kernel_stack(size_t pages);
 void vmm_free_kernel_stack(void *stack_top, size_t pages);
 
+/*
+ * Maps existing physical memory, typically device registers, and returns a
+ * pointer to `address` (which need not be page aligned). The memory is
+ * mapped writable and non-executable. No frames change owner: unmapping
+ * frees only the virtual range. Returns NULL on failure.
+ */
+void *vmm_map_physical(phys_addr_t address, size_t size);
+void vmm_unmap_physical(void *pointer, size_t size);
+
 /* Looks up a kernel virtual address. phys and flags may be NULL. */
 bool vmm_query(const void *address, phys_addr_t *phys, unsigned *flags);
 

@@ -4,9 +4,12 @@
  */
 #include <arch/boot.h>
 #include <arch/cpu.h>
+#include <arch/irq.h>
 #include <core/cmdline.h>
 #include <core/log.h>
 #include <core/panic.h>
+#include <core/time.h>
+#include <drivers/keyboard/keyboard.h>
 #include <drivers/serial/serial.h>
 #include <mm/heap.h>
 #include <mm/pmm.h>
@@ -46,9 +49,47 @@ static void memory_init(void)
     log_info("mm: %zu of %zu frames free after initialisation", stats.free_frames, stats.total_frames);
 }
 
+static void devices_init(void)
+{
+    const char *problem = arch_irq_init(vmm_map_physical);
+    if (problem != NULL) {
+        panic("irq: %s", problem);
+    }
+    time_init();
+    if (!keyboard_init()) {
+        log_warn("keyboard: no PS/2 keyboard found");
+    }
+}
+
+#define HEARTBEAT_INTERVAL_MS 1000
+
+/* Until there is a scheduler, this loop is all the kernel does once booted:
+ * sleep until an interrupt, then report what happened. */
+_Noreturn static void idle_loop(void)
+{
+    uint64_t next_heartbeat = time_now_ms() + HEARTBEAT_INTERVAL_MS;
+
+    for (;;) {
+        struct key_event event;
+        while (keyboard_read_event(&event)) {
+            keyboard_log_event(&event);
+        }
+        if (time_now_ms() >= next_heartbeat) {
+            log_info("time: up %llu s, %llu ticks", (unsigned long long)(time_now_ms() / 1000),
+                     (unsigned long long)time_ticks());
+            next_heartbeat += HEARTBEAT_INTERVAL_MS;
+        }
+        arch_cpu_idle();
+    }
+}
+
 /* Second half of boot, running on a stack the kernel allocated itself. */
 static void kmain_on_kernel_stack(void)
 {
+    devices_init();
+    /* Every handler is installed; from here on the kernel is interrupted. */
+    arch_irq_enable();
+
     const char *cmdline = arch_boot_cmdline();
     log_info("boot: command line \"%s\"", cmdline);
 
@@ -57,7 +98,7 @@ static void kmain_on_kernel_stack(void)
 
     /* Lets `make check` finish immediately; a no-op under `make run`. */
     arch_debug_exit(ARCH_DEBUG_EXIT_SUCCESS);
-    arch_halt_forever();
+    idle_loop();
 }
 
 _Noreturn void kmain(void)

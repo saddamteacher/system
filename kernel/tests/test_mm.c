@@ -119,6 +119,19 @@ bool test_vmm(void)
     EXPECT(!vmm_query(pages, NULL, NULL));
     EXPECT(pmm_stats().free_frames == free_before);
 
+    /* Mapping existing physical memory: the frame keeps its owner. */
+    phys_addr_t frame = pmm_alloc();
+    EXPECT(frame != 0);
+    memcpy((char *)arch_phys_to_virt(frame) + 0x10, "device", 7);
+    char *window = vmm_map_physical(frame + 0x10, 32);
+    EXPECT(window != NULL);
+    EXPECT((uintptr_t)window % ARCH_PAGE_SIZE == 0x10); /* offset preserved */
+    EXPECT(strcmp(window, "device") == 0);
+    vmm_unmap_physical(window, 32);
+    EXPECT(!vmm_query(window, NULL, NULL));
+    EXPECT(pmm_stats().free_frames == free_before - 1); /* not freed by unmap */
+    pmm_free(frame);
+
     /* A stack: mapped below its top, guard page below that. */
     unsigned char *stack_top = vmm_alloc_kernel_stack(2);
     EXPECT(stack_top != NULL);

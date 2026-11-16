@@ -21,6 +21,7 @@
 #include <arch/boot.h>
 
 #include "boot/boot.h"
+#include "msr.h"
 
 #define ENTRIES_PER_TABLE 512
 #define TABLE_LEVELS 4
@@ -281,11 +282,7 @@ static bool cpu_supports_no_execute(void)
 
 static void enable_page_protection_features(void)
 {
-    /* rdmsr/wrmsr use ecx for the register number and edx:eax for the value. */
-    uint32_t low, high;
-    __asm__ volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(MSR_EFER));
-    low |= EFER_NXE;
-    __asm__ volatile("wrmsr" : : "a"(low), "d"(high), "c"(MSR_EFER));
+    msr_write(MSR_EFER, msr_read(MSR_EFER) | EFER_NXE);
 
     uint64_t cr0;
     __asm__ volatile("mov %%cr0, %0" : "=r"(cr0));

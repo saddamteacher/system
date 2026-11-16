@@ -18,6 +18,10 @@ bool test_pmm(void);
 bool test_vmm(void);
 bool test_heap(void);
 
+/* test_devices.c */
+bool test_timer(void);
+bool test_keyboard(void);
+
 /* test_traps.c */
 bool test_breakpoint(void);
 bool test_divide_by_zero(void);

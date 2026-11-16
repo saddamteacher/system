@@ -92,6 +92,7 @@ QEMU_DEBUG_EXIT := -device isa-debug-exit,iobase=0xf4,iosize=0x04
 QEMU_HEADLESS   := -display none -serial stdio
 
 CHECK_TIMEOUT := 60
+comma := ,
 
 # ------------------------------------------------------------------ targets
 .PHONY: all run debug gdb symbolize clean distclean
@@ -112,16 +113,16 @@ symbolize: $(KERNEL)
 
 # ------------------------------------------------------------------- checks
 # Each check boots an ISO whose kernel command line selects a self-test.
-# $(call run-check,<name>,<iso>,<pass|panic>,<quoted regexes...>)
+# $(call run-check,<name>,<iso>,<pass|panic>,<quoted regexes...>[,<extra qemu flags>])
 define run-check
 tools/check-serial.sh $(1) $(BUILD)/check-$(1).log $(CHECK_TIMEOUT) $(3) $(4) -- \
-    $(QEMU) $(call QEMU_FLAGS,$(2)) $(QEMU_HEADLESS) $(QEMU_DEBUG_EXIT)
+    $(QEMU) $(call QEMU_FLAGS,$(2)) $(QEMU_HEADLESS) $(QEMU_DEBUG_EXIT) $(5)
 endef
 
 # Tests that only need to report success.
 PASS_TESTS  := printf cmdline bitmap list pmm vmm heap
 # Tests with their own expectations, written out below.
-OTHER_TESTS := boot breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
+OTHER_TESTS := boot timer keyboard breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
 
 CHECKS := $(PASS_TESTS) $(OTHER_TESTS)
 .PHONY: check $(CHECKS:%=check-%)
@@ -133,6 +134,19 @@ $(PASS_TESTS:%=check-%): check-%: $(BUILD)/test-%.iso
 
 check-boot: $(ISO)
 	@$(call run-check,boot,$(ISO),pass,'hello from the kernel')
+
+# Ticks are compared against an independent hardware clock.
+check-timer: $(BUILD)/test-timer.iso
+	@$(call run-check,timer,$<,pass,'time: 1000 Hz tick' 'timer test: 1000 ticks took' "test: 'timer' passed")
+
+# Keys are typed into the guest through QEMU's machine protocol (QMP) once
+# the kernel says it is ready. The key list must match expected_presses in
+# kernel/tests/test_devices.c.
+KEYBOARD_QMP := $(BUILD)/check-keyboard.qmp
+check-keyboard: $(BUILD)/test-keyboard.iso
+	@CHECK_SIDECAR="tools/qemu-sendkeys.py $(KEYBOARD_QMP) $(BUILD)/check-keyboard.log 'keyboard ready for input' a shift-b ret up" \
+	    $(call run-check,keyboard,$<,pass,"key: a pressed$(comma) character 'a'" "key: b pressed$(comma) character 'B'" \
+	    'key: enter pressed' 'key: up released' "test: 'keyboard' passed",-qmp unix:$(KEYBOARD_QMP)$(comma)server=on$(comma)wait=off)
 
 # The handler must return to the interrupted code, so the test still passes.
 check-breakpoint: $(BUILD)/test-breakpoint.iso

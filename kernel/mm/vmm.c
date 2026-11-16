@@ -170,6 +170,73 @@ void vmm_free_kernel_stack(void *stack_top, size_t pages)
     free_range(page_index((uintptr_t)stack_top) - (pages + 1), pages + 1, pages);
 }
 
+/* Number of pages needed to cover `size` bytes starting `offset` bytes into
+ * the first page. */
+static size_t pages_spanned(size_t offset, size_t size)
+{
+    return (offset + size + ARCH_PAGE_SIZE - 1) / ARCH_PAGE_SIZE;
+}
+
+void *vmm_map_physical(phys_addr_t address, size_t size)
+{
+    if (size == 0) {
+        return NULL;
+    }
+    size_t offset = address % ARCH_PAGE_SIZE;
+    phys_addr_t first_frame = address - offset;
+    size_t count = pages_spanned(offset, size);
+
+    arch_irq_state_t irq_state = spinlock_acquire(&lock);
+
+    void *result = NULL;
+    size_t first = bitmap_find_clear_run(&ranges, range_hint, count);
+    if (first != BITMAP_NOT_FOUND) {
+        size_t mapped = 0;
+        while (mapped < count
+               && arch_mmu_map(arch_mmu_kernel_space(), page_address(first + mapped),
+                               first_frame + mapped * ARCH_PAGE_SIZE, ARCH_MAP_WRITE)) {
+            mapped++;
+        }
+        if (mapped == count) {
+            bitmap_set_range(&ranges, first, count);
+            range_hint = first + count;
+            result = (void *)(page_address(first) + offset);
+        } else {
+            /* Out of memory for page tables: undo the partial mapping. */
+            for (size_t i = 0; i < mapped; i++) {
+                arch_mmu_unmap(arch_mmu_kernel_space(), page_address(first + i), NULL);
+            }
+        }
+    }
+
+    spinlock_release(&lock, irq_state);
+    return result;
+}
+
+void vmm_unmap_physical(void *pointer, size_t size)
+{
+    size_t offset = (uintptr_t)pointer % ARCH_PAGE_SIZE;
+    size_t first = page_index((uintptr_t)pointer - offset);
+    size_t count = pages_spanned(offset, size);
+
+    arch_irq_state_t irq_state = spinlock_acquire(&lock);
+
+    if (first + count > ranges.bit_count || !bitmap_all_set(&ranges, first, count)) {
+        panic("vmm: unmapping %zu page(s) at %p that are not mapped", count, pointer);
+    }
+    for (size_t i = 0; i < count; i++) {
+        /* The frames are not ours to free: they belong to a device or to
+         * whoever allocated them. */
+        arch_mmu_unmap(arch_mmu_kernel_space(), page_address(first + i), NULL);
+    }
+    bitmap_clear_range(&ranges, first, count);
+    if (first < range_hint) {
+        range_hint = first;
+    }
+
+    spinlock_release(&lock, irq_state);
+}
+
 bool vmm_query(const void *address, phys_addr_t *phys, unsigned *flags)
 {
     arch_irq_state_t irq_state = spinlock_acquire(&lock);

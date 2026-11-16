@@ -99,6 +99,10 @@ so the number of tables is bounded by the peak usage.
   and leaves it unmapped. Overflowing the stack then faults immediately
   instead of silently corrupting whatever lies below.
 
+- `vmm_map_physical(address, size)`: maps existing physical memory (device
+  registers, firmware tables) into the dynamic area. No frame changes owner;
+  unmapping releases only the virtual range.
+
 `kmain` allocates such a stack and switches to it with `arch_call_on_stack`,
 leaving the bootloader's stack behind.
 
@@ -145,6 +149,6 @@ through.
 
 - Single CPU. On SMP, unmapping needs a TLB shootdown on the other CPUs.
 - The direct map does not include device memory or reserved ranges; drivers
-  will map what they need (Phase 3 for ACPI and the APIC).
+  map what they need with `vmm_map_physical`.
 - First-fit over one list is O(number of free blocks). Size classes or a slab
   layer can come later if profiling shows a need.

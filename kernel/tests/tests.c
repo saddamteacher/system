@@ -19,6 +19,8 @@ static const struct test_case test_cases[] = {
     { "pmm", test_pmm },
     { "vmm", test_vmm },
     { "heap", test_heap },
+    { "timer", test_timer },
+    { "keyboard", test_keyboard },
     { "breakpoint", test_breakpoint },
     { "divide-by-zero", test_divide_by_zero },
     { "page-fault", test_page_fault },

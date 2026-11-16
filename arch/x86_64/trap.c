@@ -4,6 +4,7 @@
  */
 #include <arch/trap.h>
 
+#include "irq.h"
 #include "trap.h"
 
 /* Start of the higher half of the canonical address space. All kernel
@@ -39,7 +40,7 @@ static const char *const exception_names[VECTOR_EXCEPTION_COUNT] = {
 static const char *trap_name(uint64_t vector)
 {
     if (vector >= VECTOR_EXCEPTION_COUNT) {
-        /* No interrupt source is enabled yet, so nothing should arrive here. */
+        /* A vector nothing was configured to raise. */
         return "Unexpected interrupt";
     }
     const char *name = exception_names[vector];
@@ -77,6 +78,10 @@ static uint64_t read_cr4(void)
 
 void trap_dispatch(struct arch_trap_frame *frame)
 {
+    if (frame->vector >= VECTOR_EXCEPTION_COUNT && irq_dispatch(frame->vector)) {
+        return;
+    }
+
     struct arch_trap_info info = {
         .kind = frame->vector == VECTOR_BREAKPOINT ? ARCH_TRAP_BREAKPOINT : ARCH_TRAP_FATAL,
         .name = trap_name(frame->vector),
