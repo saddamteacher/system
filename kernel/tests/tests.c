@@ -40,6 +40,7 @@ static const struct test_case test_cases[] = {
     { "user-ipc-edge", test_user_ipc_edge },
     { "user-gfx", test_user_gfx },
     { "user-compositor", test_user_compositor },
+    { "user-desktop", test_user_desktop },
     { "breakpoint", test_breakpoint },
     { "divide-by-zero", test_divide_by_zero },
     { "page-fault", test_page_fault },

@@ -36,6 +36,9 @@ int munmap_pages(void *address, size_t length);
 int spawn(const char *path, char *const argv[]);
 /* Waits for a process to end; stores its exit code if exit_code != NULL. */
 int waitpid(int pid, int *exit_code);
+/* Declares that this program will not wait for process `pid`; the system
+ * then cleans up after it by itself. */
+int detach(int pid);
 int getpid(void);
 
 int sleep_ms(uint64_t milliseconds);
@@ -43,6 +46,8 @@ int sched_yield(void);
 uint64_t uptime_ms(void);
 /* Nanoseconds since boot, with sub-microsecond resolution. */
 uint64_t clock_ns(void);
+/* Calendar time: seconds since 1970-01-01 00:00:00 UTC. */
+uint64_t wall_time(void);
 
 _Noreturn void _exit(int status);
 

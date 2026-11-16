@@ -33,6 +33,8 @@ int64_t sys_sleep_ms(const uint64_t arguments[]);
 int64_t sys_yield(const uint64_t arguments[]);
 int64_t sys_uptime_ms(const uint64_t arguments[]);
 int64_t sys_clock_ns(const uint64_t arguments[]);
+int64_t sys_wall_time(const uint64_t arguments[]);
+int64_t sys_detach(const uint64_t arguments[]);
 
 /* sys_ipc.c */
 int64_t sys_fstat(const uint64_t arguments[]);

@@ -169,3 +169,5 @@ across calls; with restore disabled all four workers now fail.
 - Files are read-only; there is no writable file system yet.
 - `mmap` addresses are never reused within a process.
 - Any process may wait for any other; there is no parent/child ownership.
+  A process nobody will wait for is marked with `detach`, and its record is
+  then freed when it ends.

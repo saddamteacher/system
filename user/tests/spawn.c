@@ -41,6 +41,19 @@ int main(int argc, char **argv)
     /* A process can be waited for only once. */
     CHECK(waitpid(first, &exit_code) == -1 && errno == ECHILD);
 
+    /* A detached process cannot be waited for, whether it is still running
+     * when detached or already over. */
+    int third = spawn("/test/spawn", child_arguments);
+    CHECK(third > 0 && detach(third) == 0);
+    CHECK(waitpid(third, &exit_code) == -1 && errno == ECHILD);
+    int fourth = spawn("/test/spawn", child_arguments);
+    CHECK(fourth > 0);
+    sleep_ms(100); /* long enough for it to finish */
+    CHECK(detach(fourth) == 0);
+    CHECK(waitpid(fourth, &exit_code) == -1 && errno == ECHILD);
+    CHECK(detach(99999) == -1 && errno == ESRCH);
+    sleep_ms(100); /* let the first detached child finish before we exit */
+
     char *plain[] = { "x", NULL };
     CHECK(spawn("/no/such/program", plain) == -1 && errno == ENOENT);
     CHECK(spawn("/etc/motd", plain) == -1 && errno == ENOEXEC); /* a file, but not a program */

@@ -116,6 +116,23 @@ void gfx_blit(struct gfx_surface *surface, int x, int y, const struct gfx_surfac
 void gfx_blend(struct gfx_surface *surface, int x, int y, const struct gfx_surface *source,
                struct gfx_rect source_rect, unsigned opacity);
 
+/*
+ * Blends `source_rect` of `source`, stretched or shrunk to fill
+ * `target_rect`, with smooth (bilinear) sampling. Used for animations and
+ * for drawing one image at several sizes.
+ */
+void gfx_blend_scaled(struct gfx_surface *surface, struct gfx_rect target_rect, const struct gfx_surface *source,
+                      struct gfx_rect source_rect, unsigned opacity);
+
+/* -------------------------------------------------------------- effects */
+
+/*
+ * Blurs the pixels of `rect` in place. `radius` is the distance over which
+ * a pixel is smeared; `passes` box blurs are applied in a row: one is
+ * cheap and blocky, three are close to a true Gaussian blur.
+ */
+void gfx_box_blur(struct gfx_surface *surface, struct gfx_rect rect, int radius, int passes);
+
 /* ---------------------------------------------------------------- text */
 
 struct gfx_font;

@@ -18,6 +18,7 @@
 
 #define GUI_SERVER_PORT "saddev.compositor"
 #define GUI_TITLE_MAX 63
+#define GUI_APP_NAME_MAX 31
 #define GUI_MAX_WINDOW_SIZE 4096 /* pixels, each direction */
 
 enum gui_window_kind {
@@ -51,6 +52,20 @@ enum gui_message_type {
     /* Replaces the buffer after a resize. Attachment and size as for
      * GUI_MSG_CREATE_WINDOW. */
     GUI_MSG_ATTACH_BUFFER,
+    /* Names the application this connection belongs to, e.g. "Terminal".
+     * Shown in the menu bar and used by the dock to group windows. */
+    GUI_MSG_HELLO,
+    /* Limits where the window reacts to the pointer (relative to its
+     * content). Outside it, clicks go to whatever is below. For windows
+     * that are partly transparent, like the dock. */
+    GUI_MSG_SET_INPUT_REGION,
+
+    /* The desktop shell (menu bar and dock) additionally uses: */
+    GUI_MSG_SHELL_REGISTER,  /* "send me GUI_MSG_SHELL_WINDOW updates" */
+    GUI_MSG_SHELL_ACTIVATE,  /* bring `window` to the front, restoring it if minimized */
+    /* Where on screen `window` is represented in the dock: the target of
+     * its minimize animation. */
+    GUI_MSG_SHELL_ICON_RECT,
 
     /* ---- server to client ---- */
     GUI_MSG_WELCOME = 100,   /* first message: the screen size */
@@ -62,7 +77,15 @@ enum gui_message_type {
     GUI_MSG_FOCUS,
     GUI_MSG_CLOSE_REQUEST,   /* the user asked to close the window */
     GUI_MSG_RESIZE_REQUEST,  /* the user is resizing: attach a buffer of this size */
+    /* To the shell: an application window appeared, changed or went away. */
+    GUI_MSG_SHELL_WINDOW,
 };
+
+/* State bits in GUI_MSG_SHELL_WINDOW. A message without GUI_SHELL_EXISTS
+ * means the window is gone. */
+#define GUI_SHELL_EXISTS    (1u << 0)
+#define GUI_SHELL_MINIMIZED (1u << 1)
+#define GUI_SHELL_FOCUSED   (1u << 2)
 
 enum gui_pointer_kind {
     GUI_POINTER_MOVE = 0,
@@ -110,6 +133,18 @@ struct gui_message {
         struct {
             uint32_t focused; /* 1 = gained, 0 = lost */
         } focus;
+        struct {
+            char app[GUI_APP_NAME_MAX + 1];
+        } hello;
+        struct {
+            int32_t x, y;
+            uint32_t width, height;
+        } region; /* SET_INPUT_REGION, SHELL_ICON_RECT */
+        struct {
+            uint32_t state; /* GUI_SHELL_* */
+            char app[GUI_APP_NAME_MAX + 1];
+            char title[GUI_TITLE_MAX + 1];
+        } shell_window;
     };
 };
 

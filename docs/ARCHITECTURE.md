@@ -70,6 +70,7 @@ boot                             Limine config, linker script
 | `user/` | `init`, test programs, `rootfs/` (static files), `user.ld` |
 | `user/libgui/` | 2D drawing (surfaces, shapes, blending, text), the window system protocol and its client library |
 | `user/compositor/` | the window server |
+| `user/desktop/` | the desktop shell: wallpaper, menu bar, dock |
 | `third_party/fonts/inter/` | the Inter typeface (SIL OFL 1.1), input to `tools/mkfont.py` |
 | `tools/` | host setup, ISO and initramfs builders, font atlas generator, serial check runner, QMP key injector and screenshot checker, GDB script |
 
@@ -132,3 +133,4 @@ take spinlocks (which every other user holds with interrupts disabled).
 - [06 - IPC: channels, ports, shared memory, poll](06-ipc.md)
 - [07 - Graphics base: display, mouse, drawing, text](07-graphics.md)
 - [08 - The window server](08-compositor.md)
+- [09 - The desktop](09-desktop.md)

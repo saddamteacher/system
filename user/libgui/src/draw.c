@@ -2,7 +2,7 @@
 
 #include <math.h>
 
-#include "pixel.h"
+#include <gui/pixel.h>
 
 static uint32_t *row_at(const struct gfx_surface *surface, int y)
 {

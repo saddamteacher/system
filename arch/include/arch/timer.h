@@ -21,6 +21,12 @@ uint64_t arch_timer_source_hz(void);
 uint64_t arch_clock_ns(void);
 
 /*
+ * The current date and time from the machine's battery-backed clock, as
+ * seconds since 1970-01-01 00:00:00 UTC. Slow; read it once at boot.
+ */
+uint64_t arch_wall_clock_seconds(void);
+
+/*
  * An independent free-running hardware counter, not derived from the tick
  * timer. Its only use is to verify that ticks arrive at the right rate.
  * It counts up at `frequency_hz` and wraps at `mask`.

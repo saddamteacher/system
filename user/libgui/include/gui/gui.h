@@ -35,7 +35,8 @@ struct gui_window {
 
 struct gui_event {
     uint32_t type;             /* GUI_MSG_KEY, _POINTER, _FOCUS, _FRAME,
-                                  _CLOSE_REQUEST or _RESIZE_REQUEST */
+                                  _CLOSE_REQUEST, _RESIZE_REQUEST or
+                                  _SHELL_WINDOW */
     struct gui_window *window; /* NULL if the window no longer exists */
     union {
         struct sd_key_event key;
@@ -50,11 +51,18 @@ struct gui_event {
             int width, height;
         } resize;
         uint64_t frame_time_ms;
+        struct {
+            uint32_t id;    /* the server's id of the window described */
+            unsigned state; /* GUI_SHELL_* */
+            char app[GUI_APP_NAME_MAX + 1];
+            char title[GUI_TITLE_MAX + 1];
+        } shell_window;
     };
 };
 
-/* Connects to the window server; NULL if it is not running. */
-struct gui_connection *gui_connect(void);
+/* Connects to the window server as the application `app_name` (shown in
+ * the menu bar); NULL if the server is not running. */
+struct gui_connection *gui_connect(const char *app_name);
 void gui_disconnect(struct gui_connection *connection);
 
 int gui_screen_width(const struct gui_connection *connection);
@@ -80,6 +88,15 @@ void gui_window_set_title(struct gui_window *window, const char *title);
  * it to the display and keeps the server from reading a half-drawn surface.
  */
 void gui_window_commit(struct gui_window *window, struct gfx_rect area, bool want_frame);
+
+/* Restricts where the window reacts to the pointer; see
+ * GUI_MSG_SET_INPUT_REGION. */
+void gui_window_set_input_region(struct gui_window *window, struct gfx_rect region);
+
+/* For the desktop shell; see the GUI_MSG_SHELL_* messages. */
+void gui_shell_register(struct gui_connection *connection);
+void gui_shell_activate(struct gui_connection *connection, uint32_t window_id);
+void gui_shell_set_icon_rect(struct gui_connection *connection, uint32_t window_id, struct gfx_rect rect);
 
 /* Replaces the surface with a new one of the given size, in response to a
  * GUI_MSG_RESIZE_REQUEST. The new surface starts transparent; redraw and

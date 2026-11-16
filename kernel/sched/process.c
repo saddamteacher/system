@@ -42,6 +42,7 @@ struct process {
     uintptr_t argv;
 
     struct list_node link;
+    bool detached; /* free the record at exit; nobody will wait */
     bool exited;
     int exit_code;
     struct wait_queue exit_waiters;
@@ -313,9 +314,19 @@ _Noreturn void process_exit(int exit_code)
     arch_irq_state_t irq_state = spinlock_acquire(&process_lock);
     process->exit_code = exit_code;
     process->exited = true;
-    wait_queue_wake_all(&process->exit_waiters);
+    bool forget = process->detached;
+    if (forget) {
+        list_remove(&process->link);
+        live_processes--;
+    } else {
+        wait_queue_wake_all(&process->exit_waiters);
+    }
     spinlock_release(&process_lock, irq_state);
-    /* A waiter may free `process` from here on: do not touch it again. */
+    /* Unless detached, a waiter may free `process` from here on: do not
+     * touch it again. */
+    if (forget) {
+        kfree(process);
+    }
 
     thread_exit();
 }
@@ -340,6 +351,9 @@ int process_wait(int pid, int *exit_code)
         /* Look the process up again after every sleep: another waiter may
          * have collected and freed it in the meantime. */
         process = find_process_locked(pid);
+        if (process != NULL && process->detached) {
+            process = NULL; /* its owner gave up the right to wait for it */
+        }
         if (process == NULL || process->exited) {
             break;
         }
@@ -357,6 +371,35 @@ int process_wait(int pid, int *exit_code)
         return -ECHILD;
     }
     kfree(process);
+    return 0;
+}
+
+int process_detach(int pid)
+{
+    arch_irq_state_t irq_state = spinlock_acquire(&process_lock);
+
+    struct process *process = find_process_locked(pid);
+    bool forget = false;
+    if (process != NULL) {
+        process->detached = true;
+        /* Anyone already waiting must stop: there will be no exit code. */
+        wait_queue_wake_all(&process->exit_waiters);
+        if (process->exited) {
+            /* Already over: nothing will come along to free it later. */
+            list_remove(&process->link);
+            live_processes--;
+            forget = true;
+        }
+    }
+
+    spinlock_release(&process_lock, irq_state);
+
+    if (process == NULL) {
+        return -ESRCH;
+    }
+    if (forget) {
+        kfree(process);
+    }
     return 0;
 }
 

@@ -54,6 +54,12 @@ static struct window *hovered_window;
 /* A title bar button that was pressed and not yet released. */
 static struct window *pressed_button_window;
 static enum hit_area pressed_button;
+/* A window being resized by an edge: which edges, and the pointer position
+ * and window size when it started. */
+static struct window *resized_window;
+static unsigned resize_edges;
+static int resize_start_x, resize_start_y;
+static int resize_start_width, resize_start_height;
 
 bool input_init(void)
 {
@@ -95,8 +101,11 @@ void cursor_draw(struct gfx_surface *target)
     }
 }
 
-void input_window_destroyed(struct window *window)
+void input_window_gone(struct window *window)
 {
+    if (resized_window == window) {
+        resized_window = NULL;
+    }
     if (dragged_window == window) {
         dragged_window = NULL;
     }
@@ -143,12 +152,22 @@ static void route_pointer(enum gui_pointer_kind kind, int wheel)
 
 static void on_title_bar_button(struct window *window, enum hit_area button)
 {
-    if (button == HIT_CLOSE_BUTTON) {
+    switch (button) {
+    case HIT_CLOSE_BUTTON: {
         /* Ask, do not force: the application may want to save first. */
         struct gui_message message = { .type = GUI_MSG_CLOSE_REQUEST, .window = window->id };
         client_send(window->client, &message);
+        break;
     }
-    /* Minimize and zoom arrive with the desktop and animation phases. */
+    case HIT_MINIMIZE_BUTTON:
+        window_minimize(window);
+        break;
+    case HIT_ZOOM_BUTTON:
+        window_toggle_zoom(window);
+        break;
+    default:
+        break;
+    }
 }
 
 static void on_button_down(void)
@@ -167,9 +186,20 @@ static void on_button_down(void)
 
     switch (area) {
     case HIT_TITLE_BAR:
-        dragged_window = window;
-        drag_offset_x = pointer_x - window->x;
-        drag_offset_y = pointer_y - window->y;
+        /* A zoomed window fills the work area; it is not dragged about. */
+        if (!window->zoomed) {
+            dragged_window = window;
+            drag_offset_x = pointer_x - window->x;
+            drag_offset_y = pointer_y - window->y;
+        }
+        break;
+    case HIT_RESIZE:
+        resized_window = window;
+        resize_edges = resize_edges_at(window, pointer_x, pointer_y);
+        resize_start_x = pointer_x;
+        resize_start_y = pointer_y;
+        resize_start_width = window->width;
+        resize_start_height = window->height;
         break;
     case HIT_CLOSE_BUTTON:
     case HIT_MINIMIZE_BUTTON:
@@ -195,6 +225,7 @@ static void on_button_up(void)
         compositor_log("window %u moved to %d %d", dragged_window->id, dragged_window->x, dragged_window->y);
         dragged_window = NULL;
     }
+    resized_window = NULL;
     if (pressed_button_window != NULL) {
         enum hit_area area;
         if (window_at(pointer_x, pointer_y, &area) == pressed_button_window && area == pressed_button) {
@@ -224,12 +255,22 @@ static void on_motion(int dx, int dy)
     damage_add(cursor_rect());
 
     if (dragged_window != NULL) {
-        /* The title bar may not leave the screen at the top. */
+        /* The title bar may not slide under the menu bar. */
+        int top = work_area().y + TITLE_BAR_HEIGHT;
         int y = pointer_y - drag_offset_y;
-        if (y < TITLE_BAR_HEIGHT) {
-            y = TITLE_BAR_HEIGHT;
+        if (y < top) {
+            y = top;
         }
         window_move(dragged_window, pointer_x - drag_offset_x, y);
+    } else if (resized_window != NULL) {
+        int width = resize_start_width, height = resize_start_height;
+        if (resize_edges & RESIZE_RIGHT) {
+            width += pointer_x - resize_start_x;
+        }
+        if (resize_edges & RESIZE_BOTTOM) {
+            height += pointer_y - resize_start_y;
+        }
+        window_request_size(resized_window, width, height);
     } else {
         route_pointer(GUI_POINTER_MOVE, 0);
     }

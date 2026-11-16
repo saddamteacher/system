@@ -19,6 +19,9 @@ uint64_t time_now_ms(void);
 /* Nanoseconds since time_init(), from the CPU's high-resolution counter. */
 uint64_t time_now_ns(void);
 
+/* Calendar time: seconds since 1970-01-01 00:00:00 UTC. */
+uint64_t time_wall_seconds(void);
+
 /*
  * Installs a function called on every tick, in interrupt context, after the
  * counter was advanced. One hook; the scheduler uses it for preemption.

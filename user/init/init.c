@@ -32,6 +32,8 @@ static int start(char *const arguments[])
     int pid = spawn(arguments[0], arguments);
     if (pid < 0) {
         printf("init: cannot start %s\n", arguments[0]);
+    } else {
+        detach(pid); /* init does not wait for the programs it starts */
     }
     return pid;
 }
@@ -53,15 +55,13 @@ static int wait_for_window_server(void)
 static void start_session(void)
 {
     char *compositor[] = { "/bin/compositor", NULL };
-    char *first[] = { "/test/guidemo", "Alpha", "200", "180", "0", NULL };
-    char *second[] = { "/test/guidemo", "Beta", "420", "300", "1", NULL };
+    char *desktop[] = { "/bin/desktop", NULL };
 
     if (start(compositor) < 0 || !wait_for_window_server()) {
         printf("init: no graphical session (the window server did not start)\n");
         return;
     }
-    start(first);
-    start(second);
+    start(desktop);
 }
 
 int main(int argc, char **argv)

@@ -44,6 +44,7 @@ void compositor_quit(void)
 
 static struct {
     uint64_t period_start_ns; /* start time of the period's first frame */
+    uint64_t last_start_ns;   /* start time of the most recent frame */
     unsigned frames;          /* frames started in the period, first included */
     uint64_t work_total_ns;
     uint64_t work_max_ns;
@@ -55,6 +56,16 @@ static struct {
  */
 static void stats_record(uint64_t frame_start_ns, uint64_t frame_end_ns)
 {
+    /* The server only draws when something changed. A pause means the
+     * screen was simply still, not that frames were slow; counting it
+     * would report a meaninglessly low rate. Start measuring afresh. */
+    if (stats.frames > 0 && frame_start_ns - stats.last_start_ns > 4 * FRAME_INTERVAL_NS) {
+        stats.frames = 0;
+        stats.work_total_ns = 0;
+        stats.work_max_ns = 0;
+    }
+    stats.last_start_ns = frame_start_ns;
+
     if (stats.frames > 0 && frame_start_ns - stats.period_start_ns >= 1000 * NS_PER_MS) {
         if (option_stats) {
             /* N frame starts span N - 1 intervals; this frame's start ends

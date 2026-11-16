@@ -141,9 +141,9 @@ work per frame (so roughly 6% of the frame budget).
 
 ## Known limits
 
-- Minimize, zoom and resizing are not implemented yet (the buttons are
-  drawn; the resize protocol messages exist).
-- No shadows, translucency or wallpaper yet: Phase 9.
 - A window fully hidden behind others is still drawn and then painted over.
 - No vertical sync: the display has no way to signal it. The back buffer
   and the short copy keep tearing rare, not impossible.
+
+Minimize, zoom, resizing, shadows and translucency were added in
+[Phase 9](09-desktop.md).

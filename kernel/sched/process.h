@@ -30,6 +30,10 @@ int process_spawn(const char *path, int argc, const char *const argv[], struct p
  * the process. Returns 0, or -ECHILD if there is no such process. */
 int process_wait(int pid, int *exit_code);
 
+/* Declares that nobody will wait for process `pid`: it is forgotten as soon
+ * as it ends (at once, if it already has). Returns 0 or -ESRCH. */
+int process_detach(int pid);
+
 /* Ends the calling process. */
 _Noreturn void process_exit(int exit_code);
 

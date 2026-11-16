@@ -153,3 +153,14 @@ int64_t sys_clock_ns(const uint64_t arguments[])
     (void)arguments;
     return (int64_t)time_now_ns();
 }
+
+int64_t sys_wall_time(const uint64_t arguments[])
+{
+    (void)arguments;
+    return (int64_t)time_wall_seconds();
+}
+
+int64_t sys_detach(const uint64_t arguments[])
+{
+    return process_detach((int)arguments[0]);
+}

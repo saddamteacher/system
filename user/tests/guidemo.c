@@ -13,10 +13,10 @@
 #include <string.h>
 #include <unistd.h>
 
-#define WIDTH 360
-#define HEIGHT 240
+#define INITIAL_WIDTH 360
+#define INITIAL_HEIGHT 240
 #define MARKER_SIZE 24
-#define BAND_Y 170
+#define BAND_BOTTOM_MARGIN 34 /* from the band to the window's bottom edge */
 #define BAND_HEIGHT 36
 #define BLOCK_WIDTH 60
 
@@ -32,6 +32,12 @@ static const char *title;
 static struct gfx_font *font;
 static gfx_color background, accent;
 
+/* The layout follows the window's size, which the user can change. */
+static int band_y(const struct gui_window *window)
+{
+    return window->height - BAND_BOTTOM_MARGIN - BAND_HEIGHT;
+}
+
 static void draw_static(struct gui_window *window, gfx_color marker)
 {
     struct gfx_surface *surface = &window->surface;
@@ -40,7 +46,7 @@ static void draw_static(struct gui_window *window, gfx_color marker)
     gfx_clear(surface, gfx_rect_make(0, 0, MARKER_SIZE, MARKER_SIZE), marker);
     if (font != NULL) {
         gfx_draw_text(surface, font, 40, 28, title, -1, GFX_RGB(40, 40, 48));
-        gfx_draw_text(surface, font, 40, 120, "Drag me by the title bar.", -1, GFX_RGB(110, 110, 120));
+        gfx_draw_text(surface, font, 40, 98, "Drag me by the title bar.", -1, GFX_RGB(110, 110, 120));
     }
 }
 
@@ -48,17 +54,17 @@ static void draw_static(struct gui_window *window, gfx_color marker)
 static struct gfx_rect draw_frame(struct gui_window *window, unsigned frame, unsigned fps)
 {
     struct gfx_surface *surface = &window->surface;
-    struct gfx_rect band = gfx_rect_make(0, BAND_Y, WIDTH, BAND_HEIGHT);
+    struct gfx_rect band = gfx_rect_make(0, band_y(window), window->width, BAND_HEIGHT);
     struct gfx_rect status = gfx_rect_make(40, 50, 280, 28);
 
     gfx_clear(surface, band, background);
     /* A block bouncing between the edges, two pixels per frame. */
-    int range = WIDTH - BLOCK_WIDTH;
+    int range = window->width - BLOCK_WIDTH;
     int position = (int)(frame * 2 % (unsigned)(2 * range));
     if (position > range) {
         position = 2 * range - position;
     }
-    gfx_fill_rounded_rect(surface, gfx_rect_make(position, BAND_Y, BLOCK_WIDTH, BAND_HEIGHT), 8, accent);
+    gfx_fill_rounded_rect(surface, gfx_rect_make(position, band.y, BLOCK_WIDTH, BAND_HEIGHT), 8, accent);
 
     gfx_clear(surface, status, background);
     if (font != NULL) {
@@ -80,14 +86,16 @@ int main(int argc, char **argv)
     background = themes[theme].background;
     accent = themes[theme].accent;
 
-    struct gui_connection *connection = gui_connect();
+    /* The title doubles as the application name. */
+    struct gui_connection *connection = gui_connect(title);
     if (connection == NULL) {
         printf("guidemo %s: no window server\n", title);
         return 1;
     }
     font = gfx_font_load("/fonts/Inter-Regular-13.sdf");
     struct gui_window *window =
-        gui_window_create(connection, GUI_WINDOW_NORMAL, atoi(argv[2]), atoi(argv[3]), WIDTH, HEIGHT, title, 0);
+        gui_window_create(connection, GUI_WINDOW_NORMAL, atoi(argv[2]), atoi(argv[3]), INITIAL_WIDTH, INITIAL_HEIGHT,
+                          title, 0);
     if (window == NULL) {
         printf("guidemo %s: cannot create a window\n", title);
         return 1;
@@ -110,6 +118,15 @@ int main(int argc, char **argv)
         if (event.type == GUI_MSG_CLOSE_REQUEST
             || (event.type == GUI_MSG_KEY && event.key.pressed && event.key.character == 'q')) {
             break;
+        }
+        if (event.type == GUI_MSG_RESIZE_REQUEST) {
+            /* A new, empty surface of the requested size: redraw it all. */
+            if (gui_window_resize(window, event.resize.width, event.resize.height)) {
+                draw_static(window, themes[theme].marker);
+                draw_frame(window, frame, fps);
+                gui_window_commit(window, gfx_surface_bounds(&window->surface), true);
+            }
+            continue;
         }
         if (event.type != GUI_MSG_FRAME) {
             continue;

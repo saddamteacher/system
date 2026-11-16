@@ -72,6 +72,11 @@ int waitpid(int pid, int *exit_code)
     return (int)check(syscall6(SYS_WAIT, pid, (long)exit_code, 0, 0, 0, 0));
 }
 
+int detach(int pid)
+{
+    return (int)check(syscall6(SYS_DETACH, pid, 0, 0, 0, 0, 0));
+}
+
 int getpid(void)
 {
     return (int)syscall6(SYS_GETPID, 0, 0, 0, 0, 0, 0);
@@ -95,6 +100,11 @@ uint64_t uptime_ms(void)
 uint64_t clock_ns(void)
 {
     return (uint64_t)syscall6(SYS_CLOCK_NS, 0, 0, 0, 0, 0, 0);
+}
+
+uint64_t wall_time(void)
+{
+    return (uint64_t)syscall6(SYS_WALL_TIME, 0, 0, 0, 0, 0, 0);
 }
 
 _Noreturn void _exit(int status)

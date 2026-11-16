@@ -84,6 +84,11 @@ bool test_user_compositor(void)
     return run_program("/test/wm-session", NULL, 0);
 }
 
+bool test_user_desktop(void)
+{
+    return run_program("/test/desktop-session", NULL, 0);
+}
+
 /* A crashing program is ended by the kernel, which then keeps working:
  * the proof is that a normal program still runs afterwards. */
 bool test_user_fault(void)

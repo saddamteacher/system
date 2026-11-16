@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 
-/* Per-pixel arithmetic shared by the drawing code. Private to libgui. */
+/* Per-pixel arithmetic on premultiplied 32-bit pixels, for code that
+ * composes images itself (the drawing library, the window server). */
 
 /* x / 255, rounded, for x in 0..65025 (a product of two bytes). Exact, and
  * much cheaper than a division. */

@@ -5,7 +5,7 @@
 #include <unistd.h>
 
 #include "font_format.h"
-#include "pixel.h"
+#include <gui/pixel.h>
 
 struct gfx_font {
     struct font_file_header header;

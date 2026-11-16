@@ -42,6 +42,8 @@ enum {
     SYS_FB_INFO,    /* (struct sd_fb_info *out)                 -> 0 */
     SYS_FB_MAP,     /* ()                                       -> address of the display memory */
     SYS_CLOCK_NS,   /* ()                                       -> nanoseconds since boot */
+    SYS_WALL_TIME,  /* ()                                       -> seconds since 1970-01-01 UTC */
+    SYS_DETACH,     /* (int pid)                                -> 0; nobody will wait for it */
     SYS_COUNT
 };
 

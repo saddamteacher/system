@@ -64,7 +64,7 @@ static bool wait_for_reply(struct gui_connection *connection, struct gui_message
     }
 }
 
-struct gui_connection *gui_connect(void)
+struct gui_connection *gui_connect(const char *app_name)
 {
     struct gui_connection *connection = calloc(1, sizeof(*connection));
     if (connection == NULL) {
@@ -82,6 +82,10 @@ struct gui_connection *gui_connect(void)
     }
     connection->screen_width = (int)welcome.size.width;
     connection->screen_height = (int)welcome.size.height;
+
+    struct gui_message hello = { .type = GUI_MSG_HELLO };
+    strlcpy(hello.hello.app, app_name != NULL ? app_name : "", sizeof(hello.hello.app));
+    send_message(connection, &hello, SD_NO_HANDLE);
     return connection;
 }
 
@@ -193,6 +197,39 @@ void gui_window_set_title(struct gui_window *window, const char *title)
     send_message(window->connection, &request, SD_NO_HANDLE);
 }
 
+static void send_region(struct gui_connection *connection, uint32_t type, uint32_t window_id,
+                        struct gfx_rect rect)
+{
+    struct gui_message request = { .type = type, .window = window_id };
+    request.region.x = rect.x;
+    request.region.y = rect.y;
+    request.region.width = (uint32_t)(rect.width > 0 ? rect.width : 0);
+    request.region.height = (uint32_t)(rect.height > 0 ? rect.height : 0);
+    send_message(connection, &request, SD_NO_HANDLE);
+}
+
+void gui_window_set_input_region(struct gui_window *window, struct gfx_rect region)
+{
+    send_region(window->connection, GUI_MSG_SET_INPUT_REGION, window->id, region);
+}
+
+void gui_shell_register(struct gui_connection *connection)
+{
+    struct gui_message request = { .type = GUI_MSG_SHELL_REGISTER };
+    send_message(connection, &request, SD_NO_HANDLE);
+}
+
+void gui_shell_activate(struct gui_connection *connection, uint32_t window_id)
+{
+    struct gui_message request = { .type = GUI_MSG_SHELL_ACTIVATE, .window = window_id };
+    send_message(connection, &request, SD_NO_HANDLE);
+}
+
+void gui_shell_set_icon_rect(struct gui_connection *connection, uint32_t window_id, struct gfx_rect rect)
+{
+    send_region(connection, GUI_MSG_SHELL_ICON_RECT, window_id, rect);
+}
+
 void gui_window_commit(struct gui_window *window, struct gfx_rect area, bool want_frame)
 {
     area = gfx_rect_intersect(area, gfx_surface_bounds(&window->surface));
@@ -271,6 +308,14 @@ static void translate(struct gui_connection *connection, const struct gui_messag
     case GUI_MSG_RESIZE_REQUEST:
         event->resize.width = (int)message->size.width;
         event->resize.height = (int)message->size.height;
+        break;
+    case GUI_MSG_SHELL_WINDOW:
+        /* Describes another application's window, not one of ours. */
+        event->window = NULL;
+        event->shell_window.id = message->window;
+        event->shell_window.state = message->shell_window.state;
+        memcpy(event->shell_window.app, message->shell_window.app, GUI_APP_NAME_MAX);
+        memcpy(event->shell_window.title, message->shell_window.title, GUI_TITLE_MAX);
         break;
     case GUI_MSG_FRAME:
         event->frame_time_ms = message->frame.time_ms;

@@ -27,5 +27,12 @@ int main(void)
         }
         previous = now;
     }
+    /* Calendar time is plausible: after this code was written, and not
+     * absurdly far in the future. */
+    unsigned long long calendar = wall_time();
+    printf("sleep: calendar time is %llu seconds since 1970\n", calendar);
+    if (calendar < 1700000000ull || calendar > 4102444800ull) {
+        return 1;
+    }
     return elapsed >= 80 && elapsed <= 100 ? 0 : 1;
 }

@@ -12,6 +12,8 @@
 #include <core/panic.h>
 
 static atomic_uint_fast64_t ticks;
+/* Calendar time when the tick started. Written once in time_init(). */
+static uint64_t wall_seconds_at_start;
 /* Written once, during boot, before the first thread is created. */
 static void (*tick_hook)(void);
 
@@ -35,6 +37,7 @@ void time_init(void)
     if (problem != NULL) {
         panic("time: %s", problem);
     }
+    wall_seconds_at_start = arch_wall_clock_seconds();
     log_info("time: %u Hz tick, timer input clock measured at %llu Hz", TIME_TICK_HZ,
              (unsigned long long)arch_timer_source_hz());
 }
@@ -52,4 +55,10 @@ uint64_t time_now_ms(void)
 uint64_t time_now_ns(void)
 {
     return arch_clock_ns();
+}
+
+uint64_t time_wall_seconds(void)
+{
+    /* The hardware clock is read once; from then on the tick keeps time. */
+    return wall_seconds_at_start + time_now_ms() / 1000;
 }
