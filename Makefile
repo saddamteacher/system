@@ -118,19 +118,21 @@ tools/check-serial.sh $(1) $(BUILD)/check-$(1).log $(CHECK_TIMEOUT) $(3) $(4) --
     $(QEMU) $(call QEMU_FLAGS,$(2)) $(QEMU_HEADLESS) $(QEMU_DEBUG_EXIT)
 endef
 
-CHECKS := boot printf cmdline breakpoint divide-by-zero page-fault
+# Tests that only need to report success.
+PASS_TESTS  := printf cmdline bitmap list pmm vmm heap
+# Tests with their own expectations, written out below.
+OTHER_TESTS := boot breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
+
+CHECKS := $(PASS_TESTS) $(OTHER_TESTS)
 .PHONY: check $(CHECKS:%=check-%)
 check: $(CHECKS:%=check-%)
-	@echo "All checks passed."
+	@echo "All $(words $(CHECKS)) checks passed."
+
+$(PASS_TESTS:%=check-%): check-%: $(BUILD)/test-%.iso
+	@$(call run-check,$*,$<,pass,"test: '$*' passed")
 
 check-boot: $(ISO)
 	@$(call run-check,boot,$(ISO),pass,'hello from the kernel')
-
-check-printf: $(BUILD)/test-printf.iso
-	@$(call run-check,printf,$<,pass,"test: 'printf' passed")
-
-check-cmdline: $(BUILD)/test-cmdline.iso
-	@$(call run-check,cmdline,$<,pass,"test: 'cmdline' passed")
 
 # The handler must return to the interrupted code, so the test still passes.
 check-breakpoint: $(BUILD)/test-breakpoint.iso
@@ -147,6 +149,23 @@ check-divide-by-zero: $(BUILD)/test-divide-by-zero.iso
 check-page-fault: $(BUILD)/test-page-fault.iso
 	@$(call run-check,page-fault,$<,panic,'PANIC: CPU exception: Page Fault \(#PF\)' \
 	    'vector=14 error_code=0x0' 'fault address=0x00000000dead0000' 'System halted')
+
+# Page fault error code bits: 1 = the page was present (a protection
+# violation, not a missing page), 2 = the access was a write.
+check-write-rodata: $(BUILD)/test-write-rodata.iso
+	@$(call run-check,write-rodata,$<,panic,'PANIC: CPU exception: Page Fault \(#PF\)' \
+	    'vector=14 error_code=0x3' 'fault address=0xffffffff8' 'System halted')
+
+# Passes only if unmapping also invalidated the cached translation.
+check-use-after-unmap: $(BUILD)/test-use-after-unmap.iso
+	@$(call run-check,use-after-unmap,$<,panic,'PANIC: CPU exception: Page Fault \(#PF\)' \
+	    'vector=14 error_code=0x0' 'fault address=0xffffc0' 'System halted')
+
+# Running into the guard page must end in a double fault handled on its own
+# stack, not in a silent reset.
+check-stack-overflow: $(BUILD)/test-stack-overflow.iso
+	@$(call run-check,stack-overflow,$<,panic,'PANIC: CPU exception: Double Fault \(#DF\)' \
+	    'vector=8 error_code=0x0' 'System halted')
 
 # -------------------------------------------------------------------- build
 $(BUILD)/obj/kernel/core/string.o: CFLAGS += $(STRING_CFLAGS)

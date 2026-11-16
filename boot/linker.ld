@@ -23,19 +23,26 @@ SECTIONS
     . = 0xffffffff80000000;
     __kernel_start = .;
 
+    /* The __*_start/__*_end symbols let the kernel map each part of its own
+     * image with the right permissions when it builds its page tables. */
+    __text_start = .;
     .text : {
         *(.text .text.*)
     } :text
 
     /* Segments with different permissions must not share a page. */
     . = ALIGN(CONSTANT(MAXPAGESIZE));
+    __text_end = .;
 
+    __rodata_start = .;
     .rodata : {
         *(.rodata .rodata.*)
     } :rodata
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
+    __rodata_end = .;
 
+    __data_start = .;
     .data : {
         *(.data .data.*)
 
@@ -54,6 +61,8 @@ SECTIONS
         *(COMMON)
     } :data
 
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+    __data_end = .;
     __kernel_end = .;
 
     /DISCARD/ : {

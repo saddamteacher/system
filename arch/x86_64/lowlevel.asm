@@ -33,4 +33,16 @@ gdt_load:
     push rax
     retfq
 
+; _Noreturn void arch_call_on_stack(void *stack_top,        ; rdi
+;                                   void (*entry)(void));  ; rsi
+global arch_call_on_stack
+arch_call_on_stack:
+    mov rsp, rdi
+    ; New stack, new outermost frame: stack traces end here.
+    xor ebp, ebp
+    call rsi
+.hang:
+    hlt
+    jmp .hang
+
 section .note.GNU-stack noalloc noexec nowrite progbits

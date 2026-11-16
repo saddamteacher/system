@@ -138,6 +138,6 @@ volatile as well forces a real division.
 
 ## Not covered by a check
 
-- The double fault and NMI IST stacks are installed but no test triggers
-  them; doing so safely needs control over page mappings (Phase 2).
+- The NMI IST stack is installed but nothing triggers an NMI. (The double
+  fault stack is exercised by the `stack-overflow` check since Phase 2.)
 - `TOOLCHAIN=gcc` is still untested.

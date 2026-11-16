@@ -24,6 +24,12 @@ typedef uint64_t arch_irq_state_t;
 arch_irq_state_t arch_irq_save(void);
 void arch_irq_restore(arch_irq_state_t state);
 
+/*
+ * Abandons the current stack: continues in `entry` with the stack pointer at
+ * `stack_top`. Used once at boot to leave the bootloader's stack.
+ */
+_Noreturn void arch_call_on_stack(void *stack_top, void (*entry)(void));
+
 /* Raises a breakpoint trap at the call site. Execution continues after it. */
 void arch_breakpoint(void);
 
