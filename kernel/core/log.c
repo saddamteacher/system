@@ -96,6 +96,21 @@ void kprintf(const char *format, ...)
     va_end(arguments);
 }
 
+void log_write_raw(const char *text, size_t length)
+{
+    bool use_lock = !atomic_load(&panic_mode);
+    arch_irq_state_t irq_state = 0;
+    if (use_lock) {
+        irq_state = spinlock_acquire(&lock);
+    }
+    if (sink != NULL && length > 0) {
+        sink(text, length);
+    }
+    if (use_lock) {
+        spinlock_release(&lock, irq_state);
+    }
+}
+
 static const char *level_prefix(enum log_level level)
 {
     switch (level) {

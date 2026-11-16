@@ -2,7 +2,9 @@
 
 #include "gdt.h"
 #include "idt.h"
+#include "fpu.h"
 #include "io.h"
+#include "syscall.h"
 
 /* I/O port of QEMU's isa-debug-exit device, as configured in the Makefile. */
 #define DEBUG_EXIT_PORT 0xF4
@@ -15,6 +17,8 @@ void arch_cpu_init(void)
     /* The IDT's gates name the kernel code segment, so the GDT goes first. */
     gdt_init();
     idt_init();
+    fpu_init();
+    syscall_init();
 }
 
 _Noreturn void arch_halt_forever(void)

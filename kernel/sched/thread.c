@@ -16,6 +16,9 @@
 #include <sched/thread.h>
 
 #include <arch/context.h>
+#include <arch/cpu.h>
+#include <arch/fpu.h>
+#include <arch/mmu.h>
 #include <arch/irq.h>
 #include <core/log.h>
 #include <core/panic.h>
@@ -67,6 +70,24 @@ static struct thread *pick_next_locked(void)
     return next;
 }
 
+/* Everything about a thread that lives outside its kernel stack. */
+static void switch_user_state_locked(struct thread *previous, struct thread *next)
+{
+    if (previous->fpu_state != NULL) {
+        arch_fpu_save(previous->fpu_state);
+    }
+    /* A kernel thread only touches the kernel half, which every address
+     * space has; still, give it the kernel's own, so that no user space
+     * stays loaded after its process may have been destroyed. */
+    arch_mmu_space_switch(next->space != NULL ? next->space : arch_mmu_kernel_space());
+    if (next->stack_top != NULL) {
+        arch_set_kernel_stack(next->stack_top);
+    }
+    if (next->fpu_state != NULL) {
+        arch_fpu_restore(next->fpu_state);
+    }
+}
+
 void sched_switch_locked(void)
 {
     struct thread *previous = current;
@@ -90,6 +111,7 @@ void sched_switch_locked(void)
 
     current = next;
     stats.context_switches++;
+    switch_user_state_locked(previous, next);
     arch_context_switch(&previous->context, next->context);
     /* Running again, possibly much later. `current` is `previous` again. */
 }
@@ -175,15 +197,34 @@ static void copy_name(char *destination, const char *source)
 
 struct thread *thread_create(const char *name, thread_entry_fn entry, void *argument)
 {
+    return thread_create_user(name, entry, argument, NULL, NULL);
+}
+
+struct thread *thread_create_user(const char *name, thread_entry_fn entry, void *argument,
+                                  struct arch_address_space *space, void *owner)
+{
     struct thread *thread = kzalloc(sizeof(*thread));
     if (thread == NULL) {
         return NULL;
     }
     thread->stack_top = vmm_alloc_kernel_stack(THREAD_STACK_PAGES);
-    if (thread->stack_top == NULL) {
+    if (space != NULL) {
+        /* kmalloc aligns to 16 bytes, which is what the state needs. */
+        thread->fpu_state = kmalloc(arch_fpu_state_size());
+    }
+    if (thread->stack_top == NULL || (space != NULL && thread->fpu_state == NULL)) {
+        if (thread->stack_top != NULL) {
+            vmm_free_kernel_stack(thread->stack_top, THREAD_STACK_PAGES);
+        }
+        kfree(thread->fpu_state);
         kfree(thread);
         return NULL;
     }
+    if (thread->fpu_state != NULL) {
+        arch_fpu_state_init(thread->fpu_state);
+    }
+    thread->space = space;
+    thread->owner = owner;
     copy_name(thread->name, name);
     thread->entry = entry;
     thread->argument = argument;
@@ -203,6 +244,7 @@ struct thread *thread_create(const char *name, thread_entry_fn entry, void *argu
 static void thread_release(struct thread *thread)
 {
     vmm_free_kernel_stack(thread->stack_top, THREAD_STACK_PAGES);
+    kfree(thread->fpu_state);
     kfree(thread);
 
     arch_irq_state_t irq_state = spinlock_acquire(&sched_lock);
@@ -340,6 +382,19 @@ struct thread *thread_current(void)
     struct thread *thread = current;
     spinlock_release(&sched_lock, irq_state);
     return thread;
+}
+
+void *thread_owner(const struct thread *thread)
+{
+    return thread->owner;
+}
+
+void thread_leave_address_space(void)
+{
+    arch_irq_state_t irq_state = spinlock_acquire(&sched_lock);
+    current->space = NULL;
+    arch_mmu_space_switch(arch_mmu_kernel_space());
+    spinlock_release(&sched_lock, irq_state);
 }
 
 const char *thread_name(const struct thread *thread)

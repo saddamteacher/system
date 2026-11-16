@@ -48,18 +48,23 @@ boot                             Limine config, linker script
 | Path | Contents |
 |---|---|
 | `boot/` | `limine.conf.in` boot menu template, `linker.ld` kernel image layout |
-| `arch/include/arch/` | arch interface: `boot.h`, `context.h`, `cpu.h`, `debug_uart.h`, `irq.h`, `mmu.h`, `ps2.h`, `timer.h`, `trap.h` |
+| `abi/saddev/` | kernel-user ABI: system call numbers, structures, error codes. The only headers shared by the kernel and user space |
+| `arch/include/arch/` | arch interface: `boot.h`, `context.h`, `cpu.h`, `debug_uart.h`, `fpu.h`, `irq.h`, `user.h`, `mmu.h`, `ps2.h`, `timer.h`, `trap.h` |
 | `arch/x86_64/boot/` | `_start` (NASM), Limine requests |
-| `arch/x86_64/` | GDT/TSS, IDT, interrupt entry stubs, trap dispatch, paging, port I/O, ACPI tables, PIC, PIT, local APIC, I/O APIC, IRQ dispatch |
+| `arch/x86_64/` | GDT/TSS, IDT, interrupt entry stubs, trap dispatch, paging, port I/O, ACPI tables, PIC, PIT, local APIC, I/O APIC, IRQ dispatch, context switch, system call entry, FPU state |
 | `kernel/main.c` | `kmain`, the composition root that wires subsystems together |
 | `kernel/core/` | string functions, printf, log, spinlock, panic, command line, list, bitmap, time |
-| `kernel/mm/` | frame allocator (`pmm`), kernel virtual memory (`vmm`), heap |
-| `kernel/sched/` | threads, round-robin scheduler, wait queues, mutex |
+| `kernel/mm/` | frame allocator (`pmm`), kernel virtual memory (`vmm`), heap, user address spaces (`aspace`) |
+| `kernel/sched/` | threads, round-robin scheduler, wait queues, mutex, processes, ELF loader |
+| `kernel/fs/` | VFS, tar-based initial RAM file system, device file system |
+| `kernel/syscall/` | system call table, handlers, checked access to user memory |
 | `kernel/drivers/serial/` | 16550 UART driver |
 | `kernel/drivers/ps2/` | PS/2 controller (8042) driver |
 | `kernel/drivers/keyboard/` | key events and queue; PS/2 scancode decoder |
 | `kernel/tests/` | in-kernel self-tests selected with `test=<name>` |
-| `tools/` | host setup, ISO builder, serial check runner, QMP key injector, GDB script |
+| `libc/` | user C library; `libc/arch/x86_64` holds its few assembly files |
+| `user/` | `init`, test programs, `rootfs/` (static files), `user.ld` |
+| `tools/` | host setup, ISO and initramfs builders, serial check runner, QMP key injector, GDB script |
 
 Two rules that follow from the layering and are easy to get wrong:
 
@@ -78,7 +83,7 @@ Two rules that follow from the layering and are easy to get wrong:
 
 | Range | Use |
 |---|---|
-| `0x0000000000000000` - `0x00007fffffffffff` | user space (empty until Phase 5) |
+| `0x0000000000100000` - `0x00007ffffffff000` | user space, one per process: program at `0x400000`, `mmap` area from `0x100000000000`, stack at the top |
 | `0xffff800000000000` + physical address | direct map of RAM, read/write, no-execute |
 | `0xffffc00000000000` + 4 GiB | dynamic area: heap arenas, kernel stacks |
 | `0xffffffff80000000` - top | kernel image: text `R-X`, rodata `R--`, data/bss `RW-` |
@@ -86,10 +91,11 @@ Two rules that follow from the layering and are easy to get wrong:
 ## Lock order
 
 Locks are always taken in this order, never the reverse:
-heap lock, then vmm lock, then pmm lock.
+address space lock, then heap lock, then vmm lock, then pmm lock.
 
 A lock that protects a waited-for condition (a mutex's internal lock, the
-keyboard queue lock) is taken before the scheduler lock. The scheduler lock
+keyboard queue lock, the process table lock) is taken before the scheduler
+lock. The scheduler lock
 and the log lock are leaves: nothing is acquired while holding them.
 
 ## Interrupt context
@@ -105,3 +111,4 @@ take spinlocks (which every other user holds with interrupts disabled).
 - [02 - Memory: frames, paging, heap](02-memory.md)
 - [03 - Interrupts, time and the keyboard](03-interrupts.md)
 - [04 - Threads and scheduling](04-scheduling.md)
+- [05 - User space: processes, system calls, files, libc](05-userspace.md)

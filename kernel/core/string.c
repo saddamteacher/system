@@ -6,6 +6,8 @@
  */
 #include <core/string.h>
 
+#include <stdint.h>
+
 void *memcpy(void *restrict destination, const void *restrict source, size_t count)
 {
     unsigned char *out = destination;
@@ -63,6 +65,27 @@ size_t strlen(const char *text)
         length++;
     }
     return length;
+}
+
+size_t strnlen(const char *text, size_t limit)
+{
+    size_t length = 0;
+    while (length < limit && text[length] != '\0') {
+        length++;
+    }
+    return length;
+}
+
+char *strchr(const char *text, int character)
+{
+    for (;; text++) {
+        if (*text == (char)character) {
+            return (char *)(uintptr_t)text;
+        }
+        if (*text == '\0') {
+            return NULL;
+        }
+    }
 }
 
 int strcmp(const char *left, const char *right)

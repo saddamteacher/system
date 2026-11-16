@@ -1,5 +1,5 @@
 /*
- * State: `panicking` is set by the first panic and never cleared; it exists
+ * State: `user_fault_handler` is set once at boot. `panicking` is set by the first panic and never cleared; it exists
  * to detect a panic that happens while another panic is being reported.
  */
 #include <core/panic.h>
@@ -14,6 +14,13 @@
 #define REGISTERS_PER_LINE 3
 
 static atomic_flag panicking = ATOMIC_FLAG_INIT;
+/* Written once during boot, before any user code runs. */
+static user_fault_handler_fn user_fault_handler;
+
+void panic_set_user_fault_handler(user_fault_handler_fn handler)
+{
+    user_fault_handler = handler;
+}
 
 static void panic_begin(void)
 {
@@ -106,6 +113,9 @@ void kernel_handle_trap(const struct arch_trap_frame *frame, const struct arch_t
     if (info->kind == ARCH_TRAP_BREAKPOINT) {
         log_info("trap: breakpoint at %p", (void *)arch_trap_pc(frame));
         return;
+    }
+    if (info->from_user && user_fault_handler != NULL) {
+        user_fault_handler(frame, info);
     }
     panic_on_trap(frame, info);
 }

@@ -20,6 +20,9 @@ void log_set_sink(log_sink_fn sink);
 void kprintf(const char *format, ...) __attribute__((format(printf, 1, 2)));
 void kvprintf(const char *format, va_list arguments);
 
+/* Writes bytes as they are, with no formatting. */
+void log_write_raw(const char *text, size_t length);
+
 enum log_level { LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR };
 
 /* One log line: "[level] message\n". */

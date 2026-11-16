@@ -23,8 +23,14 @@ typedef uint64_t phys_addr_t;
 #define ARCH_MAP_EXEC  (1u << 1)
 #define ARCH_MAP_USER  (1u << 2) /* accessible from user mode */
 
-/* One set of page tables. Opaque outside the arch layer. */
-struct arch_address_space;
+/*
+ * One set of page tables. The kernel allocates the structure (it embeds it
+ * in its own address space object) but must treat the contents as private
+ * to the arch layer.
+ */
+struct arch_address_space {
+    phys_addr_t root;
+};
 
 /*
  * Page tables are themselves stored in physical frames. The arch layer gets
@@ -60,6 +66,25 @@ struct arch_address_space *arch_mmu_kernel_space(void);
  */
 uintptr_t arch_mmu_kernel_dynamic_base(void);
 size_t arch_mmu_kernel_dynamic_size(void);
+
+/*
+ * User address spaces. Each has its own lower half; the upper half is the
+ * kernel's and identical in all of them, so the kernel keeps running across
+ * a switch.
+ *
+ * init:    false if out of memory.
+ * destroy: frees the page tables of the lower half. Every page must have
+ *          been unmapped first; the frames they pointed to are the
+ *          caller's to free. The space must not be the active one.
+ * switch:  makes `space` the active address space of this CPU.
+ */
+bool arch_mmu_space_init(struct arch_address_space *space);
+void arch_mmu_space_destroy(struct arch_address_space *space);
+void arch_mmu_space_switch(struct arch_address_space *space);
+
+/* Bounds of the part of the address space user programs may use. */
+uintptr_t arch_mmu_user_base(void);
+uintptr_t arch_mmu_user_end(void);
 
 /*
  * Single-page operations. `virt` and `phys` must be page aligned.

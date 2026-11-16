@@ -52,12 +52,19 @@
 #define KERNEL_DYNAMIC_BASE 0xFFFFC00000000000ULL
 #define KERNEL_DYNAMIC_SIZE (4ULL << 30)
 
-struct arch_address_space {
-    phys_addr_t root; /* physical address of the PML4 */
-};
+/* The lower half of the address space, minus the first megabyte (so that
+ * a NULL pointer with a small offset always faults) and the last page. */
+#define USER_BASE 0x0000000000100000ULL
+#define USER_END  0x00007FFFFFFFF000ULL
+
+/* The top-level table has 512 entries; the upper 256 map the kernel half. */
+#define KERNEL_HALF_FIRST_ENTRY 256
 
 static const struct arch_mmu_frame_ops *frame_ops;
 static struct arch_address_space kernel_space;
+/* Root currently loaded in CR3. Changed only by arch_mmu_space_switch(),
+ * which the scheduler calls with its lock held. */
+static phys_addr_t active_root;
 
 /* Section boundaries from boot/linker.ld. Only their addresses matter. */
 extern const char __text_start[], __text_end[];
@@ -309,10 +316,78 @@ const char *arch_mmu_init(const struct arch_mmu_frame_ops *ops)
     if (!map_direct_map()) {
         return "could not build the direct map";
     }
+    /* Create the top-level entry of the dynamic area now, while there is
+     * only one address space. User address spaces copy the kernel's
+     * top-level entries; an entry added later would be missing in them. */
+    if (walk(&kernel_space, KERNEL_DYNAMIC_BASE, true, false) == NULL) {
+        return "could not prepare the kernel dynamic area";
+    }
 
     /* Writing CR3 switches address spaces and flushes the TLB. From the next
      * instruction on, everything the kernel touches (this code, the stack,
      * the tables themselves) must be mapped in the new tables. */
     __asm__ volatile("mov %0, %%cr3" : : "r"(kernel_space.root) : "memory");
+    active_root = kernel_space.root;
     return NULL;
+}
+
+uintptr_t arch_mmu_user_base(void)
+{
+    return USER_BASE;
+}
+
+uintptr_t arch_mmu_user_end(void)
+{
+    return USER_END;
+}
+
+bool arch_mmu_space_init(struct arch_address_space *space)
+{
+    space->root = alloc_table();
+    if (space->root == 0) {
+        return false;
+    }
+    /* Share the kernel half by copying the kernel's top-level entries. They
+     * point at the same lower-level tables, so kernel mappings made later
+     * appear in every address space, provided the top-level entry already
+     * existed. arch_mmu_init() guarantees that for every area the kernel
+     * uses. */
+    const uint64_t *kernel_root = table_at(kernel_space.root);
+    uint64_t *root = table_at(space->root);
+    for (unsigned i = KERNEL_HALF_FIRST_ENTRY; i < ENTRIES_PER_TABLE; i++) {
+        root[i] = kernel_root[i];
+    }
+    return true;
+}
+
+/* Frees a table and, above the last level, the tables it points to. */
+static void free_table_tree(phys_addr_t frame, unsigned level, unsigned entry_limit)
+{
+    if (level > 0) {
+        const uint64_t *table = table_at(frame);
+        for (unsigned i = 0; i < entry_limit; i++) {
+            if (table[i] & PTE_PRESENT) {
+                free_table_tree(table[i] & PTE_ADDRESS_MASK, level - 1, ENTRIES_PER_TABLE);
+            }
+        }
+    }
+    frame_ops->free(frame);
+}
+
+void arch_mmu_space_destroy(struct arch_address_space *space)
+{
+    /* Only the lower half belongs to this space; the kernel half's tables
+     * are shared and must survive. */
+    free_table_tree(space->root, TABLE_LEVELS - 1, KERNEL_HALF_FIRST_ENTRY);
+    space->root = 0;
+}
+
+void arch_mmu_space_switch(struct arch_address_space *space)
+{
+    /* Reloading CR3 flushes the TLB, which is expensive, so skip it when
+     * the space is already active (e.g. switching between kernel threads). */
+    if (space->root != active_root) {
+        active_root = space->root;
+        __asm__ volatile("mov %0, %%cr3" : : "r"(space->root) : "memory");
+    }
 }

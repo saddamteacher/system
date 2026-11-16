@@ -28,6 +28,11 @@ struct thread {
     thread_entry_fn entry;
     void *argument;
 
+    /* Set only for threads that run user code. */
+    struct arch_address_space *space; /* NULL: kernel thread, any space will do */
+    void *fpu_state;                  /* saved floating point registers */
+    void *owner;                      /* the process, opaque to the scheduler */
+
     /* A thread is in at most one queue at a time (run, sleep, wait or reap
      * queue), so one link serves for all of them. */
     struct list_node queue_link;

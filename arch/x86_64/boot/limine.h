@@ -136,4 +136,32 @@ struct limine_rsdp_request {
     struct limine_rsdp_response *response;
 };
 
+/* Modules: extra files the boot menu entry asks the bootloader to load
+ * into memory next to the kernel (our initial filesystem image). */
+#define LIMINE_MODULE_REQUEST_ID \
+    { LIMINE_COMMON_MAGIC, 0x3e7e279702be32afULL, 0xca1c4f3bd1280ceeULL }
+
+/* Only the leading fields are declared; the structure is longer. */
+struct limine_file {
+    uint64_t revision;
+    void *address; /* in the bootloader's direct map */
+    uint64_t size;
+    char *path;
+    char *string;
+};
+
+struct limine_module_response {
+    uint64_t revision;
+    uint64_t module_count;
+    struct limine_file **modules;
+};
+
+struct limine_module_request {
+    uint64_t id[4];
+    uint64_t revision;
+    struct limine_module_response *response;
+    uint64_t internal_module_count;
+    void *internal_modules;
+};
+
 #endif

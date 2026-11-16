@@ -30,6 +30,13 @@ void arch_irq_restore(arch_irq_state_t state);
  */
 _Noreturn void arch_call_on_stack(void *stack_top, void (*entry)(void));
 
+/*
+ * Tells the CPU where the kernel stack of the thread about to run ends. The
+ * CPU switches to it whenever that thread enters the kernel from user mode
+ * (interrupt, exception or system call).
+ */
+void arch_set_kernel_stack(void *stack_top);
+
 /* Raises a breakpoint trap at the call site. Execution continues after it. */
 void arch_breakpoint(void);
 

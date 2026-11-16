@@ -25,11 +25,15 @@ ifeq ($(TOOLCHAIN),llvm)
     CC := clang --target=x86_64-unknown-elf
     LD := ld.lld
     ADDR2LINE := llvm-addr2line
+    AR := llvm-ar
+    STRIP := llvm-strip
     STRING_CFLAGS := -fno-builtin
 else ifeq ($(TOOLCHAIN),gcc)
     CC := x86_64-elf-gcc
     LD := x86_64-elf-ld
     ADDR2LINE := x86_64-elf-addr2line
+    AR := x86_64-elf-ar
+    STRIP := x86_64-elf-strip
     STRING_CFLAGS := -fno-builtin -fno-tree-loop-distribute-patterns
 else
     $(error TOOLCHAIN must be 'llvm' or 'gcc', got '$(TOOLCHAIN)')
@@ -54,7 +58,7 @@ CFLAGS := -std=c17 -O2 -g \
           -fno-omit-frame-pointer -fno-asynchronous-unwind-tables \
           -mno-red-zone -mgeneral-regs-only -mcmodel=kernel \
           -ffile-prefix-map=$(CURDIR)=. \
-          -Iarch/include -Ikernel \
+          -Iarch/include -Ikernel -Iabi \
           -MMD -MP
 
 ASFLAGS := -f elf64 -g -F dwarf -Werror
@@ -69,6 +73,36 @@ DEPS     := $(C_SRCS:%.c=$(BUILD)/obj/%.d)
 
 KERNEL := $(BUILD)/kernel.elf
 ISO    := $(BUILD)/$(OS_NAME).iso
+
+# ----------------------------------------------------------------- userland
+# User programs are freestanding too, but unlike the kernel they may use the
+# red zone and SSE, and they are linked low instead of in the top 2 GiB.
+USER_CFLAGS := -std=c17 -O2 -g \
+               -Wall -Wextra -Werror \
+               -ffreestanding -fno-stack-protector -fno-pic -fno-pie \
+               -fno-omit-frame-pointer -fno-asynchronous-unwind-tables \
+               -ffile-prefix-map=$(CURDIR)=. \
+               -Ilibc/include -Iabi \
+               -MMD -MP
+
+USER_LDFLAGS := -nostdlib -static -z max-page-size=0x1000 -T user/user.ld
+
+LIBC_C_SRCS := $(shell find libc/src -name '*.c' | sort)
+LIBC_ASM_SRCS := $(filter-out %/crt0.asm,$(sort $(wildcard libc/arch/$(ARCH)/*.asm)))
+LIBC_OBJS   := $(LIBC_C_SRCS:%.c=$(BUILD)/obj/%.o) $(LIBC_ASM_SRCS:%.asm=$(BUILD)/obj/%.asm.o)
+LIBC        := $(BUILD)/libc.a
+# The startup code is not part of the library: it must come first in every
+# link, and exactly once.
+CRT0        := $(BUILD)/obj/libc/arch/$(ARCH)/crt0.asm.o
+
+# Programs are built into $(BUILD)/user/, laid out as in the file system.
+USER_TEST_SRCS := $(sort $(wildcard user/tests/*.c))
+USER_PROGRAMS  := $(BUILD)/user/bin/init $(USER_TEST_SRCS:user/tests/%.c=$(BUILD)/user/test/%)
+USER_OBJS      := $(BUILD)/obj/user/init/init.o $(USER_TEST_SRCS:%.c=$(BUILD)/obj/%.o)
+
+INITRAMFS := $(BUILD)/initramfs.tar
+
+DEPS += $(LIBC_C_SRCS:%.c=$(BUILD)/obj/%.d) $(USER_OBJS:%.o=%.d)
 
 # ------------------------------------------------------------------- limine
 # The bootloader is fetched as a prebuilt binary release. Tag and commit are
@@ -120,9 +154,11 @@ tools/check-serial.sh $(1) $(BUILD)/check-$(1).log $(CHECK_TIMEOUT) $(3) $(4) --
 endef
 
 # Tests that only need to report success.
-PASS_TESTS  := printf cmdline bitmap list pmm vmm heap threads sleep mutex thread-churn
+PASS_TESTS  := printf cmdline bitmap list pmm vmm heap threads sleep mutex thread-churn \
+               boot user-hello user-syscalls user-files user-malloc user-spawn user-fpu \
+               user-sleep user-fault user-churn
 # Tests with their own expectations, written out below.
-OTHER_TESTS := boot timer keyboard breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
+OTHER_TESTS := timer keyboard breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
 
 CHECKS := $(PASS_TESTS) $(OTHER_TESTS)
 .PHONY: check $(CHECKS:%=check-%)
@@ -131,9 +167,6 @@ check: $(CHECKS:%=check-%)
 
 $(PASS_TESTS:%=check-%): check-%: $(BUILD)/test-%.iso
 	@$(call run-check,$*,$<,pass,"test: '$*' passed")
-
-check-boot: $(ISO)
-	@$(call run-check,boot,$(ISO),pass,'hello from the kernel')
 
 # Ticks are compared against an independent hardware clock.
 check-timer: $(BUILD)/test-timer.iso
@@ -195,6 +228,29 @@ $(BUILD)/obj/%.asm.o: %.asm
 $(KERNEL): $(OBJS) boot/linker.ld
 	$(LD) $(LDFLAGS) $(OBJS) -o $@
 
+# Same compile rule as the kernel, different flags.
+$(LIBC_OBJS) $(USER_OBJS): CFLAGS := $(USER_CFLAGS)
+$(BUILD)/obj/libc/src/string.o: CFLAGS := $(USER_CFLAGS) $(STRING_CFLAGS)
+
+$(LIBC): $(LIBC_OBJS)
+	@mkdir -p $(@D)
+	$(AR) rcs $@ $^
+
+USER_LINK_DEPS := $(CRT0) $(LIBC) user/user.ld
+define link-user
+@mkdir -p $(@D)
+$(LD) $(USER_LDFLAGS) $(CRT0) $(filter-out $(USER_LINK_DEPS),$^) $(LIBC) -o $@
+endef
+
+$(BUILD)/user/bin/init: $(BUILD)/obj/user/init/init.o $(USER_LINK_DEPS)
+	$(link-user)
+
+$(BUILD)/user/test/%: $(BUILD)/obj/user/tests/%.o $(USER_LINK_DEPS)
+	$(link-user)
+
+$(INITRAMFS): $(USER_PROGRAMS) $(shell find user/rootfs -type f) tools/mkinitramfs.sh
+	tools/mkinitramfs.sh $@ user/rootfs $(BUILD)/user $(STRIP)
+
 $(LIMINE_TOOL):
 	rm -rf $(LIMINE_DIR)
 	git -c advice.detachedHead=false clone --quiet --depth=1 --branch=$(LIMINE_TAG) $(LIMINE_REPO) $(LIMINE_DIR)
@@ -202,18 +258,18 @@ $(LIMINE_TOOL):
 	    { echo "limine: $(LIMINE_TAG) is not commit $(LIMINE_COMMIT)"; rm -rf $(LIMINE_DIR); exit 1; }
 	$(MAKE) -C $(LIMINE_DIR) CC="$(HOST_CC)" limine
 
-ISO_DEPS := $(KERNEL) boot/limine.conf.in tools/mkiso.sh $(LIMINE_TOOL)
+ISO_DEPS := $(KERNEL) $(INITRAMFS) boot/limine.conf.in tools/mkiso.sh $(LIMINE_TOOL)
 
 $(ISO): $(ISO_DEPS)
-	tools/mkiso.sh $@ $(KERNEL) $(LIMINE_DIR) boot/limine.conf.in ""
+	tools/mkiso.sh $@ $(KERNEL) $(INITRAMFS) $(LIMINE_DIR) boot/limine.conf.in ""
 
 # Keep the test ISOs: make would otherwise delete them as intermediate files.
-.PRECIOUS: $(BUILD)/test-%.iso
+.PRECIOUS: $(BUILD)/test-%.iso $(BUILD)/obj/user/tests/%.o
 $(BUILD)/test-%.iso: $(ISO_DEPS)
-	tools/mkiso.sh $@ $(KERNEL) $(LIMINE_DIR) boot/limine.conf.in "test=$*"
+	tools/mkiso.sh $@ $(KERNEL) $(INITRAMFS) $(LIMINE_DIR) boot/limine.conf.in "test=$*"
 
 clean:
-	rm -rf $(BUILD)/obj $(KERNEL) $(BUILD)/*.iso $(BUILD)/*.log*
+	rm -rf $(BUILD)/obj $(KERNEL) $(BUILD)/*.iso $(BUILD)/*.log* $(BUILD)/user $(LIBC) $(INITRAMFS)
 
 distclean:
 	rm -rf $(BUILD)

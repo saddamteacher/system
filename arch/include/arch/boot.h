@@ -50,4 +50,18 @@ struct arch_memory_region {
 size_t arch_boot_memory_region_count(void);
 struct arch_memory_region arch_boot_memory_region(size_t index);
 
+/*
+ * Boot modules: files the bootloader loaded into memory along with the
+ * kernel. `address` is physical and not part of the direct map; map it
+ * before use.
+ */
+struct arch_boot_module {
+    uint64_t address;
+    uint64_t size;
+    const char *path;
+};
+
+size_t arch_boot_module_count(void);
+struct arch_boot_module arch_boot_module(size_t index);
+
 #endif

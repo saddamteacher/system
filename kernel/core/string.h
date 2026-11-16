@@ -14,6 +14,10 @@ void *memset(void *destination, int value, size_t count);
 int memcmp(const void *left, const void *right, size_t count);
 
 size_t strlen(const char *text);
+/* Length of `text`, looking at no more than `limit` bytes. */
+size_t strnlen(const char *text, size_t limit);
+/* First occurrence of `character` in `text`, or NULL. */
+char *strchr(const char *text, int character);
 int strcmp(const char *left, const char *right);
 int strncmp(const char *left, const char *right, size_t count);
 

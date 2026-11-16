@@ -10,10 +10,14 @@
 #include <core/panic.h>
 #include <core/time.h>
 #include <drivers/keyboard/keyboard.h>
+#include <fs/devfs.h>
+#include <fs/tarfs.h>
+#include <fs/vfs.h>
 #include <drivers/serial/serial.h>
 #include <mm/heap.h>
 #include <mm/pmm.h>
 #include <mm/vmm.h>
+#include <sched/process.h>
 #include <sched/thread.h>
 #include <tests/tests.h>
 
@@ -62,28 +66,23 @@ static void devices_init(void)
     }
 }
 
-#define HEARTBEAT_INTERVAL_MS 5000
-
-/* Logs every key event. Blocks while there is nothing to report. */
-static void key_logger_thread(void *argument)
+/* Mounts the initial RAM file system (the first boot module) at "/" and
+ * the device file system at "/dev". */
+static void filesystems_init(void)
 {
-    (void)argument;
-    for (;;) {
-        struct key_event event;
-        keyboard_wait_event(&event);
-        keyboard_log_event(&event);
+    if (arch_boot_module_count() == 0) {
+        panic("boot: the bootloader did not load the initial file system");
     }
-}
-
-static void heartbeat_thread(void *argument)
-{
-    (void)argument;
-    for (;;) {
-        thread_sleep_ms(HEARTBEAT_INTERVAL_MS);
-        struct sched_stats stats = sched_stats();
-        log_info("time: up %llu s, %llu context switches, %llu threads",
-                 (unsigned long long)(time_now_ms() / 1000), (unsigned long long)stats.context_switches,
-                 (unsigned long long)stats.live_threads);
+    struct arch_boot_module module = arch_boot_module(0);
+    /* Module memory is not in the direct map. It stays mapped for good:
+     * the file system serves file contents straight out of it. */
+    const void *archive = vmm_map_physical(module.address, module.size);
+    const struct filesystem *root = archive != NULL ? tarfs_create(archive, module.size) : NULL;
+    if (root == NULL) {
+        panic("boot: cannot use the initial file system '%s'", module.path);
+    }
+    if (vfs_mount("/", root) < 0 || vfs_mount("/dev", devfs_filesystem()) < 0) {
+        panic("boot: cannot mount the file systems");
     }
 }
 
@@ -96,6 +95,21 @@ static void start_detached(const char *name, thread_entry_fn entry)
     thread_detach(thread);
 }
 
+/* Starts the first user program and stays behind as its guardian. */
+static void run_init(void)
+{
+    static const char *const argv[] = { "/bin/init" };
+    int pid = process_spawn(argv[0], 1, argv, NULL);
+    if (pid < 0) {
+        panic("boot: cannot start /bin/init: error %d", -pid);
+    }
+    int exit_code = 0;
+    process_wait(pid, &exit_code);
+    /* Nothing would start programs any more; that is not a state to
+     * continue in silently. */
+    panic("init exited with code %d", exit_code);
+}
+
 /* The first real thread. Unlike the boot context, which becomes the idle
  * thread, this one is allowed to sleep and block. */
 static void main_thread(void *argument)
@@ -104,14 +118,18 @@ static void main_thread(void *argument)
     const char *cmdline = arch_boot_cmdline();
     log_info("boot: command line \"%s\"", cmdline);
 
+    filesystems_init();
+    process_init();
     log_info("hello from the kernel");
-    run_requested_test(cmdline);
 
-    /* Lets `make check` finish immediately; a no-op under `make run`. */
-    arch_debug_exit(ARCH_DEBUG_EXIT_SUCCESS);
-
-    start_detached("key-logger", key_logger_thread);
-    start_detached("heartbeat", heartbeat_thread);
+    char test_name[32];
+    if (cmdline_get(cmdline, "test", test_name, sizeof(test_name))) {
+        run_requested_test(cmdline);
+        /* Ends the QEMU run of `make check`. */
+        arch_debug_exit(ARCH_DEBUG_EXIT_SUCCESS);
+        return;
+    }
+    run_init();
 }
 
 /* Second half of boot, running on a stack the kernel allocated itself. */

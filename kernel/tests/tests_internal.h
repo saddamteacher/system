@@ -28,6 +28,18 @@ bool test_sleep(void);
 bool test_mutex(void);
 bool test_thread_churn(void);
 
+/* test_user.c */
+bool test_boot(void);
+bool test_user_hello(void);
+bool test_user_syscalls(void);
+bool test_user_files(void);
+bool test_user_malloc(void);
+bool test_user_spawn(void);
+bool test_user_fpu(void);
+bool test_user_sleep(void);
+bool test_user_fault(void);
+bool test_user_churn(void);
+
 /* test_traps.c */
 bool test_breakpoint(void);
 bool test_divide_by_zero(void);

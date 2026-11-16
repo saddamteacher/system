@@ -87,6 +87,9 @@ void trap_dispatch(struct arch_trap_frame *frame)
         .name = trap_name(frame->vector),
         .vector = frame->vector,
         .error_code = frame->error_code,
+        /* The low two bits of the saved code segment are the privilege
+         * level the CPU was running at. */
+        .from_user = (frame->cs & 3) == 3,
     };
     if (frame->vector == VECTOR_PAGE_FAULT) {
         info.has_fault_address = true;

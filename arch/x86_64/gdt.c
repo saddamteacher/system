@@ -9,13 +9,18 @@
  * Limine leaves its own GDT loaded. We replace it because the kernel must
  * own every table the CPU consults, and we need user segments and a TSS.
  *
- * State: `gdt`, `tss` and the IST stacks are written once here, during
- * single-threaded boot with interrupts off, and never modified afterwards
- * (Phase 5 will add a documented writer for tss.rsp[0]).
+ * State: `gdt`, the IST stacks and tss.ist are written once here, during
+ * single-threaded boot with interrupts off. tss.rsp[0] is rewritten by
+ * arch_set_kernel_stack() on every thread switch, with the scheduler lock
+ * held.
  */
 #include "gdt.h"
 
 #include <stdint.h>
+
+#include <arch/cpu.h>
+
+#include "syscall.h"
 
 /* Access byte: present, descriptor type (code/data), and for code: readable;
  * for data: writable. DPL (bits 5-6) is the privilege level. */
@@ -62,6 +67,16 @@ static uint8_t nmi_stack[IST_STACK_SIZE] __attribute__((aligned(16)));
 
 /* Implemented in lowlevel.asm. */
 void gdt_load(const struct descriptor_table_pointer *pointer, uint16_t code_selector, uint16_t data_selector);
+
+void arch_set_kernel_stack(void *top)
+{
+    /* Two mechanisms enter the kernel from user mode and each has its own
+     * idea of where the stack is: interrupts and exceptions read it from
+     * the TSS, the syscall instruction does not switch stacks at all and
+     * our entry code loads it from a variable. */
+    tss.rsp[0] = (uint64_t)(uintptr_t)top;
+    syscall_kernel_stack = (uint64_t)(uintptr_t)top;
+}
 
 static uint64_t stack_top(uint8_t *stack)
 {

@@ -34,6 +34,22 @@ _Noreturn void sched_idle_loop(void);
  */
 struct thread *thread_create(const char *name, thread_entry_fn entry, void *argument);
 
+/*
+ * Like thread_create(), for a thread that will enter user mode: it runs in
+ * the address space `space`, gets its floating point state saved across
+ * switches, and carries `owner` (see thread_owner()).
+ */
+struct arch_address_space;
+struct thread *thread_create_user(const char *name, thread_entry_fn entry, void *argument,
+                                  struct arch_address_space *space, void *owner);
+
+/* The owner given to thread_create_user(); NULL for kernel threads. */
+void *thread_owner(const struct thread *thread);
+
+/* Makes the calling thread a pure kernel thread again and switches to the
+ * kernel's address space, so that the one it was using can be destroyed. */
+void thread_leave_address_space(void);
+
 /* Waits until `thread` has ended, then releases it. The pointer is invalid
  * afterwards. */
 void thread_join(struct thread *thread);

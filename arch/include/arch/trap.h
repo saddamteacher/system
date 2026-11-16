@@ -23,6 +23,7 @@ struct arch_trap_info {
     const char *name; /* human readable, e.g. "Divide Error (#DE)" */
     uint64_t vector;
     uint64_t error_code;
+    bool from_user;         /* the trap interrupted user mode code */
     bool has_fault_address; /* true for memory access faults */
     uintptr_t fault_address;
 };

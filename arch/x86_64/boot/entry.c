@@ -50,6 +50,11 @@ static volatile struct limine_rsdp_request rsdp_request = {
     .id = LIMINE_RSDP_REQUEST_ID,
 };
 
+LIMINE_SECTION(".limine_requests")
+static volatile struct limine_module_request module_request = {
+    .id = LIMINE_MODULE_REQUEST_ID,
+};
+
 LIMINE_SECTION(".limine_requests_end")
 static volatile uint64_t requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
@@ -146,4 +151,22 @@ uint64_t boot_rsdp_address(void)
 {
     const struct limine_rsdp_response *response = rsdp_request.response;
     return response != NULL ? response->address : 0;
+}
+
+size_t arch_boot_module_count(void)
+{
+    const struct limine_module_response *response = module_request.response;
+    return response != NULL ? response->module_count : 0;
+}
+
+struct arch_boot_module arch_boot_module(size_t index)
+{
+    const struct limine_file *file = module_request.response->modules[index];
+    return (struct arch_boot_module){
+        /* The bootloader reports a direct-map address; convert it back, as
+         * our own direct map does not cover module memory. */
+        .address = (uint64_t)(uintptr_t)file->address - boot_hhdm_offset(),
+        .size = file->size,
+        .path = file->path,
+    };
 }
