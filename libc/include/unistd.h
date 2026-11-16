@@ -41,6 +41,8 @@ int getpid(void);
 int sleep_ms(uint64_t milliseconds);
 int sched_yield(void);
 uint64_t uptime_ms(void);
+/* Nanoseconds since boot, with sub-microsecond resolution. */
+uint64_t clock_ns(void);
 
 _Noreturn void _exit(int status);
 

@@ -147,3 +147,9 @@ int64_t sys_uptime_ms(const uint64_t arguments[])
     (void)arguments;
     return (int64_t)time_now_ms();
 }
+
+int64_t sys_clock_ns(const uint64_t arguments[])
+{
+    (void)arguments;
+    return (int64_t)time_now_ns();
+}

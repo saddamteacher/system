@@ -15,6 +15,12 @@ const char *arch_timer_start(uint32_t frequency_hz, void (*on_tick)(void));
 uint64_t arch_timer_source_hz(void);
 
 /*
+ * High-resolution monotonic clock: nanoseconds since arch_timer_start().
+ * Cheap to read and far finer than the tick; use it to measure durations.
+ */
+uint64_t arch_clock_ns(void);
+
+/*
  * An independent free-running hardware counter, not derived from the tick
  * timer. Its only use is to verify that ticks arrive at the right rate.
  * It counts up at `frequency_hz` and wraps at `mask`.

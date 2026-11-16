@@ -1,10 +1,13 @@
 /*
  * init: the first user process, started by the kernel once it has booted.
+ * It brings up the graphical session and then stays alive as the ancestor
+ * of everything that runs later.
  *
- * With the argument "--once" it reports and exits, which the boot check
- * uses. Without it init stays alive: it is the ancestor of everything that
- * runs later.
+ * With the argument "--once" it only reports and exits, which the boot
+ * check uses.
  */
+#include <gui/protocol.h>
+#include <ipc.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -24,6 +27,43 @@ static void print_file(const char *path)
     close(descriptor);
 }
 
+static int start(char *const arguments[])
+{
+    int pid = spawn(arguments[0], arguments);
+    if (pid < 0) {
+        printf("init: cannot start %s\n", arguments[0]);
+    }
+    return pid;
+}
+
+/* The window server is ready once its port exists. */
+static int wait_for_window_server(void)
+{
+    for (int attempt = 0; attempt < 300; attempt++) {
+        int channel = port_connect(GUI_SERVER_PORT);
+        if (channel >= 0) {
+            close(channel);
+            return 1;
+        }
+        sleep_ms(10);
+    }
+    return 0;
+}
+
+static void start_session(void)
+{
+    char *compositor[] = { "/bin/compositor", NULL };
+    char *first[] = { "/test/guidemo", "Alpha", "200", "180", "0", NULL };
+    char *second[] = { "/test/guidemo", "Beta", "420", "300", "1", NULL };
+
+    if (start(compositor) < 0 || !wait_for_window_server()) {
+        printf("init: no graphical session (the window server did not start)\n");
+        return;
+    }
+    start(first);
+    start(second);
+}
+
 int main(int argc, char **argv)
 {
     printf("init: hello from user space, pid %d, up %llu ms\n", getpid(), (unsigned long long)uptime_ms());
@@ -32,6 +72,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--once") == 0) {
         return 0;
     }
+    start_session();
     for (;;) {
         sleep_ms(60000);
     }

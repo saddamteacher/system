@@ -16,6 +16,8 @@ void time_init(void);
 
 uint64_t time_ticks(void);
 uint64_t time_now_ms(void);
+/* Nanoseconds since time_init(), from the CPU's high-resolution counter. */
+uint64_t time_now_ns(void);
 
 /*
  * Installs a function called on every tick, in interrupt context, after the

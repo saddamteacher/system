@@ -48,3 +48,8 @@ uint64_t time_now_ms(void)
 {
     return time_ticks() * TIME_MS_PER_TICK;
 }
+
+uint64_t time_now_ns(void)
+{
+    return arch_clock_ns();
+}

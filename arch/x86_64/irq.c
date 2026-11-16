@@ -19,6 +19,7 @@
 #include "irq.h"
 #include "lapic.h"
 #include "pic.h"
+#include "tsc.h"
 #include "vectors.h"
 
 /* The ACPI PM timer runs at exactly three times the PIT's input clock. */
@@ -154,6 +155,7 @@ const char *arch_timer_start(uint32_t frequency_hz, void (*on_tick)(void))
         return "invalid timer configuration";
     }
     timer_tick = on_tick;
+    tsc_calibrate();
     timer_source_hz = lapic_timer_start(frequency_hz);
     if (timer_source_hz == 0) {
         return "local APIC timer does not count";

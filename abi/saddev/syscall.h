@@ -41,6 +41,7 @@ enum {
     SYS_SHM_MAP,    /* (int fd)                                 -> address */
     SYS_FB_INFO,    /* (struct sd_fb_info *out)                 -> 0 */
     SYS_FB_MAP,     /* ()                                       -> address of the display memory */
+    SYS_CLOCK_NS,   /* ()                                       -> nanoseconds since boot */
     SYS_COUNT
 };
 

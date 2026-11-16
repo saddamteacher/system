@@ -111,8 +111,11 @@ FONTS           := $(FONT_VARIANTS:%=$(GENERATED_ROOT)/fonts/Inter-%.sdf)
 
 # Programs are built into $(BUILD)/user/, laid out as in the file system.
 USER_TEST_SRCS := $(sort $(wildcard user/tests/*.c))
-USER_PROGRAMS  := $(BUILD)/user/bin/init $(USER_TEST_SRCS:user/tests/%.c=$(BUILD)/user/test/%)
-USER_OBJS      := $(BUILD)/obj/user/init/init.o $(USER_TEST_SRCS:%.c=$(BUILD)/obj/%.o)
+COMPOSITOR_SRCS := $(sort $(wildcard user/compositor/*.c))
+COMPOSITOR_OBJS := $(COMPOSITOR_SRCS:%.c=$(BUILD)/obj/%.o)
+USER_PROGRAMS  := $(BUILD)/user/bin/init $(BUILD)/user/bin/compositor \
+                  $(USER_TEST_SRCS:user/tests/%.c=$(BUILD)/user/test/%)
+USER_OBJS      := $(BUILD)/obj/user/init/init.o $(COMPOSITOR_OBJS) $(USER_TEST_SRCS:%.c=$(BUILD)/obj/%.o)
 
 INITRAMFS := $(BUILD)/initramfs.tar
 
@@ -172,7 +175,7 @@ PASS_TESTS  := printf cmdline bitmap list pmm vmm heap threads sleep mutex timed
                boot user-hello user-syscalls user-files user-malloc user-spawn user-fpu \
                user-sleep user-fault user-churn user-ipc user-ipc-edge
 # Tests with their own expectations, written out below.
-OTHER_TESTS := timer keyboard user-gfx breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
+OTHER_TESTS := timer keyboard user-gfx user-compositor breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
 
 CHECKS := $(PASS_TESTS) $(OTHER_TESTS)
 .PHONY: check $(CHECKS:%=check-%)
@@ -202,6 +205,14 @@ check-user-gfx: $(BUILD)/test-user-gfx.iso
 	@CHECK_SIDECAR="tools/qemu-gfx-check.py $(GFX_QMP) $(BUILD)/check-user-gfx.log $(BUILD)/gfx" \
 	    $(call run-check,user-gfx,$<,pass,'gfx: display 1280x800' 'gfx: quit requested' \
 	    "test: 'user-gfx' passed",-qmp unix:$(GFX_QMP)$(comma)server=on$(comma)wait=off)
+
+# Two animated windows under a window server; a script raises one, drags
+# it, and checks screenshots and frame rates (tools/qemu-wm-check.py).
+WM_QMP := $(BUILD)/check-user-compositor.qmp
+check-user-compositor: $(BUILD)/test-user-compositor.iso
+	@CHECK_SIDECAR="tools/qemu-wm-check.py $(WM_QMP) $(BUILD)/check-user-compositor.log $(BUILD)/wm" \
+	    $(call run-check,user-compositor,$<,pass,'compositor: ready' 'compositor: exiting' \
+	    "test: 'user-compositor' passed",-qmp unix:$(WM_QMP)$(comma)server=on$(comma)wait=off)
 
 # The handler must return to the interrupted code, so the test still passes.
 check-breakpoint: $(BUILD)/test-breakpoint.iso
@@ -277,6 +288,9 @@ $(LD) $(USER_LDFLAGS) $(CRT0) $(filter-out $(USER_LINK_DEPS),$^) $(LIBGUI) $(LIB
 endef
 
 $(BUILD)/user/bin/init: $(BUILD)/obj/user/init/init.o $(USER_LINK_DEPS)
+	$(link-user)
+
+$(BUILD)/user/bin/compositor: $(COMPOSITOR_OBJS) $(USER_LINK_DEPS)
 	$(link-user)
 
 $(BUILD)/user/test/%: $(BUILD)/obj/user/tests/%.o $(USER_LINK_DEPS)

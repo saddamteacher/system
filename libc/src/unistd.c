@@ -92,6 +92,11 @@ uint64_t uptime_ms(void)
     return (uint64_t)syscall6(SYS_UPTIME_MS, 0, 0, 0, 0, 0, 0);
 }
 
+uint64_t clock_ns(void)
+{
+    return (uint64_t)syscall6(SYS_CLOCK_NS, 0, 0, 0, 0, 0, 0);
+}
+
 _Noreturn void _exit(int status)
 {
     syscall6(SYS_EXIT, status, 0, 0, 0, 0, 0);
