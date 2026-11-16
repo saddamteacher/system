@@ -1,0 +1,8 @@
+# Limine boot menu template. tools/mkiso.sh replaces @CMDLINE@.
+# boot():/ is the volume Limine itself was loaded from.
+timeout: 0
+
+/Lumen
+    protocol: limine
+    path: boot():/boot/kernel.elf
+    cmdline: @CMDLINE@

@@ -3,8 +3,29 @@
 
 #include <stdint.h>
 
+/*
+ * Installs the CPU's own tables (on x86_64: GDT, TSS, IDT) so that traps are
+ * delivered to the kernel. Call once, early, on the boot CPU.
+ */
+void arch_cpu_init(void);
+
 /* Stops this CPU permanently, with interrupts disabled. */
 _Noreturn void arch_halt_forever(void);
+
+/* Hint for busy-wait loops: lets the CPU save power / yield to a sibling. */
+void arch_cpu_relax(void);
+
+/*
+ * Interrupt masking. arch_irq_save() disables interrupts and returns the
+ * previous state; arch_irq_restore() puts that state back. Using save/restore
+ * instead of disable/enable makes critical sections nest correctly.
+ */
+typedef uint64_t arch_irq_state_t;
+arch_irq_state_t arch_irq_save(void);
+void arch_irq_restore(arch_irq_state_t state);
+
+/* Raises a breakpoint trap at the call site. Execution continues after it. */
+void arch_breakpoint(void);
 
 /*
  * Asks the emulator to terminate with the given code. Used by automated

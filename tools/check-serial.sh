@@ -1,36 +1,56 @@
 #!/bin/sh
-# Boots the OS headless and checks the serial log.
+# Boots the OS headless and checks how it ended and what it logged.
 #
-# usage: check-serial.sh <log-file> <timeout-seconds> <expected-regex> -- <qemu command...>
+# usage: check-serial.sh <name> <log-file> <timeout-seconds> <pass|panic> \
+#                        <expected-regex>... -- <qemu command...>
 #
-# Passes only if the kernel reported success through the debug-exit device
-# AND the expected text appeared on the serial port.
+# pass:  the kernel must report success through the debug-exit device.
+# panic: the kernel must report failure, i.e. it must have panicked.
+# Every regex must match some line of the serial log.
 set -u
 
-LOG="$1"; TIMEOUT="$2"; EXPECTED="$3"
+NAME="$1"; LOG="$2"; TIMEOUT="$3"; OUTCOME="$4"
 shift 4
 
 # QEMU's isa-debug-exit turns a written value v into exit status (v << 1) | 1.
-# The kernel writes 0x10 for success, so success is (0x10 << 1) | 1 = 33.
-QEMU_STATUS_SUCCESS=33
+# The kernel writes 0x10 for success and 0x11 for failure.
+case "$OUTCOME" in
+    pass)  expected_status=33 ;;
+    panic) expected_status=35 ;;
+    *) echo "check-serial.sh: outcome must be 'pass' or 'panic'"; exit 2 ;;
+esac
+
+# Regexes run up to the "--" separator; the QEMU command follows it.
+count=0
+for argument in "$@"; do
+    [ "$argument" = "--" ] && break
+    count=$((count + 1))
+done
+patterns_file="$LOG.patterns"
+: > "$patterns_file"
+i=0
+while [ "$i" -lt "$count" ]; do
+    printf '%s\n' "$1" >> "$patterns_file"
+    shift
+    i=$((i + 1))
+done
+shift # the "--"
 
 timeout "$TIMEOUT" "$@" > "$LOG" 2>&1
 status=$?
 
-echo "--- serial log ($LOG) ---"
-cat "$LOG"
-echo "--- end of serial log ---"
+fail() {
+    echo "--- serial log ($LOG) ---"
+    cat "$LOG"
+    echo "--- end of serial log ---"
+    echo "CHECK FAILED [$NAME]: $1"
+    exit 1
+}
 
-if [ "$status" -eq 124 ]; then
-    echo "CHECK FAILED: timed out after ${TIMEOUT}s (kernel never signalled completion)"
-    exit 1
-fi
-if [ "$status" -ne "$QEMU_STATUS_SUCCESS" ]; then
-    echo "CHECK FAILED: QEMU exited with status $status, expected $QEMU_STATUS_SUCCESS"
-    exit 1
-fi
-if ! grep -Eq "$EXPECTED" "$LOG"; then
-    echo "CHECK FAILED: serial log does not match: $EXPECTED"
-    exit 1
-fi
-echo "CHECK PASSED"
+[ "$status" -eq 124 ] && fail "timed out after ${TIMEOUT}s (kernel never signalled completion)"
+[ "$status" -ne "$expected_status" ] && fail "QEMU exited with status $status, expected $expected_status ($OUTCOME)"
+while IFS= read -r pattern; do
+    grep -Eq -- "$pattern" "$LOG" || fail "serial log does not match: $pattern"
+done < "$patterns_file"
+
+echo "CHECK PASSED [$NAME]"

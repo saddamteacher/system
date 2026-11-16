@@ -6,7 +6,8 @@
 |---|---|
 | `tools/setup.sh` | install host packages (Debian/Ubuntu) |
 | `make run` | build and boot in a QEMU window, serial on the terminal |
-| `make check` | build, boot headless, verify the serial log |
+| `make check` | build, boot headless, run every self-test, verify the logs |
+| `make symbolize ADDR=0x...` | turn a panic stack-trace address into function and line |
 | `make debug` + `make gdb` | boot frozen, attach GDB, stop at `kmain` |
 | `make clean` / `make distclean` | remove outputs / also the downloaded bootloader |
 
@@ -31,6 +32,7 @@ The flags that matter for correctness, not style:
 | `-mcmodel=kernel` | code and data live in the top 2 GiB, addressable with 32-bit sign-extended offsets |
 | `-fno-pic -fno-pie` | the kernel is linked at a fixed virtual address |
 | `-fno-stack-protector` | the protector needs runtime support we have not written |
+| `-ffile-prefix-map` | keeps the checkout path out of the binary |
 
 ## Boot flow
 
@@ -42,8 +44,8 @@ The flags that matter for correctness, not style:
    paging on, stack provided by the bootloader.
 4. `_start` zeroes `rbp`, aligns the stack and calls `arch_entry`
    (`arch/x86_64/boot/entry.c`).
-5. `arch_entry` initialises the COM1 early console, checks that Limine accepted
-   our base revision, and calls `kmain` (`kernel/core/main.c`).
+5. `arch_entry` calls `kmain` (`kernel/main.c`), which brings up logging and
+   then asks `arch_boot_problem()` whether Limine accepted our base revision.
 
 ### Limine protocol
 
@@ -54,7 +56,7 @@ kernel needs another request.
 The image contains a *base revision tag* (three 64-bit words: two magic
 numbers and the revision) placed between a start marker and an end marker in
 `.data`. A bootloader that supports the revision overwrites the third word
-with 0; `arch_entry` refuses to continue otherwise. The linker script wraps
+with 0; the kernel panics otherwise. The linker script wraps
 the request sections in `KEEP` because only the bootloader ever reads them.
 
 The bootloader itself is a prebuilt binary release, cloned into `build/limine`
@@ -68,21 +70,21 @@ the tag points at, not the hash of the annotated tag object that
 data+bss `RW-`), each starting on its own page, so later phases can map them
 with exact permissions. `__kernel_start` and `__kernel_end` bracket the image.
 
-## Early console
-
-`arch_early_console_write` polls the COM1 UART (port `0x3F8`, 16550
-compatible): wait until the transmit register is empty, write one byte. It
-needs no interrupts, locks or memory, so it works from the first line of C.
-Phase 1 replaces it with a real serial driver and `kprintf`.
-
 ## Automated check
 
-`make check` attaches QEMU's `isa-debug-exit` device at port `0xF4`. Writing a
-value `v` to it makes QEMU exit with status `(v << 1) | 1`. `kmain` writes
-`0x10`, so success is exit status 33. `tools/check-serial.sh` passes only if
-QEMU exits with 33 **and** the serial log matches the expected text; a
-`timeout` catches a kernel that hangs. Under `make run` the device is absent,
-the write goes to an unassigned port and is ignored, and the kernel halts.
+`make check` boots the OS headless once per self-test and inspects the serial
+log. Each run uses its own ISO: `tools/mkiso.sh` fills the `@CMDLINE@`
+placeholder of `boot/limine.conf.in` with `test=<name>`, and the kernel reads
+that through Limine's command line request.
+
+QEMU's `isa-debug-exit` device sits at port `0xF4`. Writing a value `v` to it
+makes QEMU exit with status `(v << 1) | 1`. The kernel writes `0x10` when it
+finishes normally (status 33) and `0x11` from `panic` (status 35).
+`tools/check-serial.sh` takes the expected outcome (`pass` or `panic`) and a
+list of regular expressions; a check passes only if the exit status is the
+expected one **and** every expression matches the log. A `timeout` catches a
+kernel that hangs. Under `make run` the device is absent, the write goes to an
+unassigned port and is ignored, and the kernel halts.
 
 ## Debugging
 

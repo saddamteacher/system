@@ -30,4 +30,26 @@
     { 0xf9562b2d5c95a6c8ULL, 0x6a7b384944536bdcULL, (revision) }
 #define LIMINE_BASE_REVISION_INDEX 2
 
+/* Every request id starts with these two words, followed by two words that
+ * identify the specific request. */
+#define LIMINE_COMMON_MAGIC 0xc7b1dd30df4c8b88ULL, 0x0a82e883a194f07bULL
+
+/*
+ * Executable command line: the `cmdline:` value of the boot menu entry.
+ * `response` stays NULL if the bootloader does not know the request.
+ */
+#define LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID \
+    { LIMINE_COMMON_MAGIC, 0x4b161536e598651eULL, 0xb390ad4a2f1f303aULL }
+
+struct limine_executable_cmdline_response {
+    uint64_t revision;
+    char *cmdline;
+};
+
+struct limine_executable_cmdline_request {
+    uint64_t id[4];
+    uint64_t revision;
+    struct limine_executable_cmdline_response *response;
+};
+
 #endif

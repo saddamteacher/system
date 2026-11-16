@@ -2,9 +2,10 @@
 #
 #   make            build the bootable ISO
 #   make run        build and boot in QEMU (window + serial on this terminal)
-#   make check      build, boot headless and verify the serial log
+#   make check      build, boot headless, run every self-test, verify the logs
 #   make debug      boot headless, frozen, waiting for GDB on :1234
 #   make gdb        attach GDB to a `make debug` session
+#   make symbolize ADDR=0x...   turn a panic stack-trace address into a name
 #   make clean      remove build outputs (keeps the downloaded bootloader)
 #   make distclean  remove everything under build/
 
@@ -18,12 +19,18 @@ BUILD   := build
 # gcc:  a dedicated x86_64-elf cross toolchain, if you have built one.
 TOOLCHAIN ?= llvm
 
+# STRING_CFLAGS stops the optimiser from turning the loop inside memset()
+# into a call to memset(), i.e. infinite recursion. Same for memcpy etc.
 ifeq ($(TOOLCHAIN),llvm)
     CC := clang --target=x86_64-unknown-elf
     LD := ld.lld
+    ADDR2LINE := llvm-addr2line
+    STRING_CFLAGS := -fno-builtin
 else ifeq ($(TOOLCHAIN),gcc)
     CC := x86_64-elf-gcc
     LD := x86_64-elf-ld
+    ADDR2LINE := x86_64-elf-addr2line
+    STRING_CFLAGS := -fno-builtin -fno-tree-loop-distribute-patterns
 else
     $(error TOOLCHAIN must be 'llvm' or 'gcc', got '$(TOOLCHAIN)')
 endif
@@ -39,11 +46,14 @@ QEMU    := qemu-system-x86_64
 #                      those registers
 # -mcmodel=kernel      code lives in the top 2 GiB of the address space
 # -fno-pic/-fno-pie    the kernel is linked at a fixed address
+# -ffile-prefix-map    keeps the checkout path out of the binary, so the same
+#                      sources give the same kernel in any directory
 CFLAGS := -std=c17 -O2 -g \
           -Wall -Wextra -Werror \
           -ffreestanding -fno-stack-protector -fno-pic -fno-pie \
           -fno-omit-frame-pointer -fno-asynchronous-unwind-tables \
           -mno-red-zone -mgeneral-regs-only -mcmodel=kernel \
+          -ffile-prefix-map=$(CURDIR)=. \
           -Iarch/include -Ikernel \
           -MMD -MP
 
@@ -74,32 +84,72 @@ LIMINE_TOOL   := $(LIMINE_DIR)/limine
 # back to (much slower) software emulation.
 QEMU_ACCEL := $(shell test -w /dev/kvm && echo "-enable-kvm -cpu host")
 
+# $(call QEMU_FLAGS,<iso>)
 # -no-reboot: a triple fault stops QEMU instead of silently rebooting forever.
-QEMU_FLAGS := -M q35 -m 256M $(QEMU_ACCEL) -cdrom $(ISO) -boot d -no-reboot
+QEMU_FLAGS = -M q35 -m 256M $(QEMU_ACCEL) -cdrom $(1) -boot d -no-reboot
 
 QEMU_DEBUG_EXIT := -device isa-debug-exit,iobase=0xf4,iosize=0x04
 QEMU_HEADLESS   := -display none -serial stdio
 
 CHECK_TIMEOUT := 60
-CHECK_EXPECT  := ^hello from the kernel
 
 # ------------------------------------------------------------------ targets
-.PHONY: all run check debug gdb clean distclean
+.PHONY: all run debug gdb symbolize clean distclean
 all: $(ISO)
 
 run: $(ISO)
-	$(QEMU) $(QEMU_FLAGS) -serial stdio
-
-check: $(ISO)
-	tools/check-serial.sh $(BUILD)/serial.log $(CHECK_TIMEOUT) '$(CHECK_EXPECT)' -- \
-	    $(QEMU) $(QEMU_FLAGS) $(QEMU_HEADLESS) $(QEMU_DEBUG_EXIT)
+	$(QEMU) $(call QEMU_FLAGS,$(ISO)) -serial stdio
 
 # -s: GDB server on localhost:1234.  -S: do not start the CPU until GDB says so.
 debug: $(ISO)
-	$(QEMU) $(QEMU_FLAGS) $(QEMU_HEADLESS) -s -S
+	$(QEMU) $(call QEMU_FLAGS,$(ISO)) $(QEMU_HEADLESS) -s -S
 
 gdb: $(KERNEL)
 	gdb -q -x tools/gdbinit
+
+symbolize: $(KERNEL)
+	$(ADDR2LINE) -f -p -e $(KERNEL) $(ADDR)
+
+# ------------------------------------------------------------------- checks
+# Each check boots an ISO whose kernel command line selects a self-test.
+# $(call run-check,<name>,<iso>,<pass|panic>,<quoted regexes...>)
+define run-check
+tools/check-serial.sh $(1) $(BUILD)/check-$(1).log $(CHECK_TIMEOUT) $(3) $(4) -- \
+    $(QEMU) $(call QEMU_FLAGS,$(2)) $(QEMU_HEADLESS) $(QEMU_DEBUG_EXIT)
+endef
+
+CHECKS := boot printf cmdline breakpoint divide-by-zero page-fault
+.PHONY: check $(CHECKS:%=check-%)
+check: $(CHECKS:%=check-%)
+	@echo "All checks passed."
+
+check-boot: $(ISO)
+	@$(call run-check,boot,$(ISO),pass,'hello from the kernel')
+
+check-printf: $(BUILD)/test-printf.iso
+	@$(call run-check,printf,$<,pass,"test: 'printf' passed")
+
+check-cmdline: $(BUILD)/test-cmdline.iso
+	@$(call run-check,cmdline,$<,pass,"test: 'cmdline' passed")
+
+# The handler must return to the interrupted code, so the test still passes.
+check-breakpoint: $(BUILD)/test-breakpoint.iso
+	@$(call run-check,breakpoint,$<,pass,'trap: breakpoint at 0xffffffff8' "test: 'breakpoint' passed")
+
+# A deliberate crash: the kernel must report it cleanly and stop.
+check-divide-by-zero: $(BUILD)/test-divide-by-zero.iso
+	@$(call run-check,divide-by-zero,$<,panic,'PANIC: CPU exception: Divide Error \(#DE\)' \
+	    'vector=0 error_code=0x0' ' rip=ffffffff8[0-9a-f]{7}' \
+	    'Stack trace:' '\[0\] 0xffffffff8' 'System halted')
+
+# Unlike #DE, a page fault makes the CPU push an error code, so this also
+# covers the other kind of entry stub.
+check-page-fault: $(BUILD)/test-page-fault.iso
+	@$(call run-check,page-fault,$<,panic,'PANIC: CPU exception: Page Fault \(#PF\)' \
+	    'vector=14 error_code=0x0' 'fault address=0x00000000dead0000' 'System halted')
+
+# -------------------------------------------------------------------- build
+$(BUILD)/obj/kernel/core/string.o: CFLAGS += $(STRING_CFLAGS)
 
 $(BUILD)/obj/%.o: %.c
 	@mkdir -p $(@D)
@@ -119,25 +169,18 @@ $(LIMINE_TOOL):
 	    { echo "limine: $(LIMINE_TAG) is not commit $(LIMINE_COMMIT)"; rm -rf $(LIMINE_DIR); exit 1; }
 	$(MAKE) -C $(LIMINE_DIR) CC="$(HOST_CC)" limine
 
-# The ISO boots both ways: via BIOS (El Torito image limine-bios-cd.bin) and
-# via UEFI (the FAT image limine-uefi-cd.bin, which contains BOOTX64.EFI).
-$(ISO): $(KERNEL) boot/limine.conf $(LIMINE_TOOL)
-	rm -rf $(BUILD)/iso_root
-	mkdir -p $(BUILD)/iso_root/boot/limine $(BUILD)/iso_root/EFI/BOOT
-	cp $(KERNEL) $(BUILD)/iso_root/boot/kernel.elf
-	cp boot/limine.conf $(LIMINE_DIR)/limine-bios.sys $(LIMINE_DIR)/limine-bios-cd.bin \
-	    $(LIMINE_DIR)/limine-uefi-cd.bin $(BUILD)/iso_root/boot/limine/
-	cp $(LIMINE_DIR)/BOOTX64.EFI $(BUILD)/iso_root/EFI/BOOT/
-	xorriso -as mkisofs -quiet -R -r -J \
-	    -b boot/limine/limine-bios-cd.bin -no-emul-boot -boot-load-size 4 -boot-info-table \
-	    -hfsplus -apm-block-size 2048 \
-	    --efi-boot boot/limine/limine-uefi-cd.bin -efi-boot-part --efi-boot-image \
-	    --protective-msdos-label \
-	    $(BUILD)/iso_root -o $@
-	$(LIMINE_TOOL) bios-install $@ 2>/dev/null
+ISO_DEPS := $(KERNEL) boot/limine.conf.in tools/mkiso.sh $(LIMINE_TOOL)
+
+$(ISO): $(ISO_DEPS)
+	tools/mkiso.sh $@ $(KERNEL) $(LIMINE_DIR) boot/limine.conf.in ""
+
+# Keep the test ISOs: make would otherwise delete them as intermediate files.
+.PRECIOUS: $(BUILD)/test-%.iso
+$(BUILD)/test-%.iso: $(ISO_DEPS)
+	tools/mkiso.sh $@ $(KERNEL) $(LIMINE_DIR) boot/limine.conf.in "test=$*"
 
 clean:
-	rm -rf $(BUILD)/obj $(BUILD)/iso_root $(KERNEL) $(ISO) $(BUILD)/serial.log
+	rm -rf $(BUILD)/obj $(KERNEL) $(BUILD)/*.iso $(BUILD)/*.log*
 
 distclean:
 	rm -rf $(BUILD)

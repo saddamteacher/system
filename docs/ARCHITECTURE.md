@@ -47,13 +47,27 @@ boot                             Limine config, linker script
 
 | Path | Contents |
 |---|---|
-| `boot/` | `limine.conf` boot menu, `linker.ld` kernel image layout |
-| `arch/include/arch/` | arch interface: `boot.h`, `cpu.h`, `early_console.h` |
-| `arch/x86_64/boot/` | `_start` (NASM), Limine requests, `arch_entry` |
-| `arch/x86_64/` | port I/O, COM1 early console, halt, debug exit |
-| `kernel/core/` | `kmain` |
-| `tools/` | host setup, serial check runner, GDB script |
+| `boot/` | `limine.conf.in` boot menu template, `linker.ld` kernel image layout |
+| `arch/include/arch/` | arch interface: `boot.h`, `cpu.h`, `debug_uart.h`, `trap.h` |
+| `arch/x86_64/boot/` | `_start` (NASM), Limine requests |
+| `arch/x86_64/` | GDT/TSS, IDT, interrupt entry stubs, trap dispatch, port I/O |
+| `kernel/main.c` | `kmain`, the composition root that wires subsystems together |
+| `kernel/core/` | string functions, printf, log, spinlock, panic, command line |
+| `kernel/drivers/serial/` | 16550 UART driver |
+| `kernel/tests/` | in-kernel self-tests selected with `test=<name>` |
+| `tools/` | host setup, ISO builder, serial check runner, GDB script |
+
+Two rules that follow from the layering and are easy to get wrong:
+
+- `kernel/core` is the lowest kernel layer, so it cannot include a driver.
+  The log therefore writes to a *sink* function pointer; `kmain` installs the
+  serial driver as that sink.
+- `arch` is below the kernel, so it cannot call `kprintf` or `panic`. When it
+  needs the kernel (boot handoff, a trap it cannot handle) it calls an
+  *upcall* declared in an `<arch/...>` header and implemented by the kernel:
+  `kmain` and `kernel_handle_trap`.
 
 ## Design notes
 
 - [00 - Toolchain and boot](00-toolchain.md)
+- [01 - Core: logging, panic, descriptor tables, traps](01-core.md)
