@@ -1,0 +1,13 @@
+# GDB setup for kernel debugging. Start QEMU with `make debug` first, then run
+# `make gdb` in a second terminal.
+set pagination off
+set disassembly-flavor intel
+set architecture i386:x86-64
+file build/kernel.elf
+target remote localhost:1234
+
+# Hardware breakpoint: the kernel's pages are not mapped yet while the
+# bootloader runs, so a software breakpoint (a patched instruction) cannot be
+# written at this point.
+hbreak kmain
+continue
