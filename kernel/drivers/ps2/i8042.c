@@ -1,6 +1,7 @@
 /*
- * State: keyboard_handler is written once by i8042_attach_keyboard() before
- * the keyboard interrupt is enabled, and read by the interrupt handler.
+ * State: keyboard_handler and mouse_handler are each written once, by the
+ * attach function, before that device's interrupt is enabled; the interrupt
+ * handler reads them.
  */
 #include <drivers/ps2/i8042.h>
 
@@ -21,10 +22,16 @@
 #define COMMAND_DISABLE_MOUSE   0xA7
 #define COMMAND_DISABLE_KEYBOARD 0xAD
 #define COMMAND_ENABLE_KEYBOARD 0xAE
+#define COMMAND_ENABLE_MOUSE    0xA8
+/* "The next byte written to the data port goes to the mouse." */
+#define COMMAND_WRITE_TO_MOUSE  0xD4
+
+#define MOUSE_ACKNOWLEDGE 0xFA
 
 #define CONFIG_KEYBOARD_IRQ     (1u << 0)
 #define CONFIG_MOUSE_IRQ        (1u << 1)
 #define CONFIG_KEYBOARD_CLOCK_OFF (1u << 4)
+#define CONFIG_MOUSE_CLOCK_OFF  (1u << 5)
 /* Translate whatever scancode set the keyboard uses into set 1, the one
  * the keyboard driver decodes. */
 #define CONFIG_TRANSLATION      (1u << 6)
@@ -34,6 +41,7 @@
 #define WAIT_ATTEMPTS 100000
 
 static i8042_byte_handler_fn keyboard_handler;
+static i8042_byte_handler_fn mouse_handler;
 
 static bool wait_until_writable(void)
 {
@@ -111,7 +119,9 @@ bool i8042_init(void)
     return write_config(config);
 }
 
-static void keyboard_irq(void *context)
+/* Shared by both interrupt lines: the controller has one output buffer for
+ * both devices, and a status bit says where each byte came from. */
+static void device_irq(void *context)
 {
     (void)context;
 
@@ -123,8 +133,9 @@ static void keyboard_irq(void *context)
             return;
         }
         uint8_t byte = arch_ps2_read_data();
-        if ((status & STATUS_FROM_MOUSE) == 0 && keyboard_handler != NULL) {
-            keyboard_handler(byte);
+        i8042_byte_handler_fn handler = (status & STATUS_FROM_MOUSE) != 0 ? mouse_handler : keyboard_handler;
+        if (handler != NULL) {
+            handler(byte);
         }
     }
 }
@@ -132,7 +143,7 @@ static void keyboard_irq(void *context)
 bool i8042_attach_keyboard(i8042_byte_handler_fn handler)
 {
     keyboard_handler = handler;
-    if (!arch_irq_register(ARCH_PS2_KEYBOARD_IRQ, keyboard_irq, NULL)) {
+    if (!arch_irq_register(ARCH_PS2_KEYBOARD_IRQ, device_irq, NULL)) {
         return false;
     }
 
@@ -143,4 +154,44 @@ bool i8042_attach_keyboard(i8042_byte_handler_fn handler)
     config |= CONFIG_KEYBOARD_IRQ;
     config &= (uint8_t)~CONFIG_KEYBOARD_CLOCK_OFF;
     return write_config(config) && send_command(COMMAND_ENABLE_KEYBOARD);
+}
+
+bool i8042_mouse_read(uint8_t *byte)
+{
+    if (!wait_until_readable()) {
+        return false;
+    }
+    *byte = arch_ps2_read_data();
+    return true;
+}
+
+bool i8042_mouse_command(uint8_t command)
+{
+    if (!send_command(COMMAND_WRITE_TO_MOUSE) || !wait_until_writable()) {
+        return false;
+    }
+    arch_ps2_write_data(command);
+
+    uint8_t reply;
+    return i8042_mouse_read(&reply) && reply == MOUSE_ACKNOWLEDGE;
+}
+
+bool i8042_attach_mouse(i8042_byte_handler_fn handler)
+{
+    mouse_handler = handler;
+    if (!arch_irq_register(ARCH_PS2_MOUSE_IRQ, device_irq, NULL)) {
+        return false;
+    }
+    uint8_t config;
+    if (!read_config(&config)) {
+        return false;
+    }
+    config |= CONFIG_MOUSE_IRQ;
+    config &= (uint8_t)~CONFIG_MOUSE_CLOCK_OFF;
+    return write_config(config);
+}
+
+bool i8042_enable_mouse_port(void)
+{
+    return send_command(COMMAND_ENABLE_MOUSE);
 }

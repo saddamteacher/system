@@ -42,6 +42,7 @@ bool test_user_fault(void);
 bool test_user_churn(void);
 bool test_user_ipc(void);
 bool test_user_ipc_edge(void);
+bool test_user_gfx(void);
 
 /* test_traps.c */
 bool test_breakpoint(void);

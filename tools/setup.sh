@@ -4,7 +4,7 @@
 # binary release into build/.
 set -eu
 
-PACKAGES="clang lld llvm nasm make gdb git python3 xorriso qemu-system-x86"
+PACKAGES="clang lld llvm nasm make gdb git python3 python3-pil xorriso qemu-system-x86"
 
 SUDO=""
 [ "$(id -u)" -eq 0 ] || SUDO="sudo"

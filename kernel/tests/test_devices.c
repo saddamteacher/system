@@ -76,7 +76,7 @@ bool test_keyboard(void)
     log_info("test: keyboard ready for input");
 
     while (presses < EXPECTED_PRESS_COUNT || releases < EXPECTED_PRESS_COUNT) {
-        struct key_event event;
+        struct sd_key_event event;
         if (!keyboard_read_event(&event)) {
             if (time_now_ms() >= deadline) {
                 log_error("keyboard test: timed out after %zu presses, %zu releases", presses, releases);

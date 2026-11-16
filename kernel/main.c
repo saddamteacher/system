@@ -9,7 +9,9 @@
 #include <core/log.h>
 #include <core/panic.h>
 #include <core/time.h>
+#include <drivers/framebuffer/framebuffer.h>
 #include <drivers/keyboard/keyboard.h>
+#include <drivers/mouse/mouse.h>
 #include <fs/devfs.h>
 #include <fs/tarfs.h>
 #include <fs/vfs.h>
@@ -64,6 +66,10 @@ static void devices_init(void)
     if (!keyboard_init()) {
         log_warn("keyboard: no PS/2 keyboard found");
     }
+    if (!mouse_init()) {
+        log_warn("mouse: no PS/2 mouse found");
+    }
+    framebuffer_init();
 }
 
 /* Mounts the initial RAM file system (the first boot module) at "/" and

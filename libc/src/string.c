@@ -184,7 +184,9 @@ const char *strerror(int error)
     case EAGAIN:       return "try again";
     case ENOMEM:       return "out of memory";
     case EFAULT:       return "bad address";
+    case EBUSY:        return "in use by someone else";
     case EEXIST:       return "already exists";
+    case ENODEV:       return "no such device";
     case ENOTDIR:      return "not a directory";
     case EISDIR:       return "is a directory";
     case EINVAL:       return "invalid argument";

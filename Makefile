@@ -81,8 +81,9 @@ USER_CFLAGS := -std=c17 -O2 -g \
                -Wall -Wextra -Werror \
                -ffreestanding -fno-stack-protector -fno-pic -fno-pie \
                -fno-omit-frame-pointer -fno-asynchronous-unwind-tables \
+               -fno-math-errno \
                -ffile-prefix-map=$(CURDIR)=. \
-               -Ilibc/include -Iabi \
+               -Ilibc/include -Iabi -Iuser/libgui/include \
                -MMD -MP
 
 USER_LDFLAGS := -nostdlib -static -z max-page-size=0x1000 -T user/user.ld
@@ -95,6 +96,19 @@ LIBC        := $(BUILD)/libc.a
 # link, and exactly once.
 CRT0        := $(BUILD)/obj/libc/arch/$(ARCH)/crt0.asm.o
 
+# The GUI library, linked into every program; the linker takes only the
+# parts a program uses.
+LIBGUI_SRCS := $(shell find user/libgui/src -name '*.c' | sort)
+LIBGUI_OBJS := $(LIBGUI_SRCS:%.c=$(BUILD)/obj/%.o)
+LIBGUI      := $(BUILD)/libgui.a
+
+# Glyph atlases, rasterized at build time from the TrueType files:
+# <weight>-<pixel size>.
+FONT_SOURCE_DIR := third_party/fonts/inter
+FONT_VARIANTS   := Regular-11 Regular-13 Regular-15 Regular-20 Medium-13 SemiBold-13 SemiBold-15 SemiBold-28
+GENERATED_ROOT  := $(BUILD)/rootfs
+FONTS           := $(FONT_VARIANTS:%=$(GENERATED_ROOT)/fonts/Inter-%.sdf)
+
 # Programs are built into $(BUILD)/user/, laid out as in the file system.
 USER_TEST_SRCS := $(sort $(wildcard user/tests/*.c))
 USER_PROGRAMS  := $(BUILD)/user/bin/init $(USER_TEST_SRCS:user/tests/%.c=$(BUILD)/user/test/%)
@@ -102,7 +116,7 @@ USER_OBJS      := $(BUILD)/obj/user/init/init.o $(USER_TEST_SRCS:%.c=$(BUILD)/ob
 
 INITRAMFS := $(BUILD)/initramfs.tar
 
-DEPS += $(LIBC_C_SRCS:%.c=$(BUILD)/obj/%.d) $(USER_OBJS:%.o=%.d)
+DEPS += $(LIBC_C_SRCS:%.c=$(BUILD)/obj/%.d) $(LIBGUI_OBJS:%.o=%.d) $(USER_OBJS:%.o=%.d)
 
 # ------------------------------------------------------------------- limine
 # The bootloader is fetched as a prebuilt binary release. Tag and commit are
@@ -158,7 +172,7 @@ PASS_TESTS  := printf cmdline bitmap list pmm vmm heap threads sleep mutex timed
                boot user-hello user-syscalls user-files user-malloc user-spawn user-fpu \
                user-sleep user-fault user-churn user-ipc user-ipc-edge
 # Tests with their own expectations, written out below.
-OTHER_TESTS := timer keyboard breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
+OTHER_TESTS := timer keyboard user-gfx breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
 
 CHECKS := $(PASS_TESTS) $(OTHER_TESTS)
 .PHONY: check $(CHECKS:%=check-%)
@@ -180,6 +194,14 @@ check-keyboard: $(BUILD)/test-keyboard.iso
 	@CHECK_SIDECAR="tools/qemu-sendkeys.py $(KEYBOARD_QMP) $(BUILD)/check-keyboard.log 'keyboard ready for input' a shift-b ret up" \
 	    $(call run-check,keyboard,$<,pass,"key: a pressed$(comma) character 'a'" "key: b pressed$(comma) character 'B'" \
 	    'key: enter pressed' 'key: up released' "test: 'keyboard' passed",-qmp unix:$(KEYBOARD_QMP)$(comma)server=on$(comma)wait=off)
+
+# The program draws; a script looks at the screen through QEMU, moves the
+# mouse and checks the result (see tools/qemu-gfx-check.py).
+GFX_QMP := $(BUILD)/check-user-gfx.qmp
+check-user-gfx: $(BUILD)/test-user-gfx.iso
+	@CHECK_SIDECAR="tools/qemu-gfx-check.py $(GFX_QMP) $(BUILD)/check-user-gfx.log $(BUILD)/gfx" \
+	    $(call run-check,user-gfx,$<,pass,'gfx: display 1280x800' 'gfx: quit requested' \
+	    "test: 'user-gfx' passed",-qmp unix:$(GFX_QMP)$(comma)server=on$(comma)wait=off)
 
 # The handler must return to the interrupted code, so the test still passes.
 check-breakpoint: $(BUILD)/test-breakpoint.iso
@@ -229,17 +251,29 @@ $(KERNEL): $(OBJS) boot/linker.ld
 	$(LD) $(LDFLAGS) $(OBJS) -o $@
 
 # Same compile rule as the kernel, different flags.
-$(LIBC_OBJS) $(USER_OBJS): CFLAGS := $(USER_CFLAGS)
+$(LIBC_OBJS) $(LIBGUI_OBJS) $(USER_OBJS): CFLAGS := $(USER_CFLAGS)
 $(BUILD)/obj/libc/src/string.o: CFLAGS := $(USER_CFLAGS) $(STRING_CFLAGS)
 
 $(LIBC): $(LIBC_OBJS)
 	@mkdir -p $(@D)
 	$(AR) rcs $@ $^
 
-USER_LINK_DEPS := $(CRT0) $(LIBC) user/user.ld
+$(LIBGUI): $(LIBGUI_OBJS)
+	@mkdir -p $(@D)
+	$(AR) rcs $@ $^
+
+# Inter-Regular-13.sdf is made from Inter-Regular.ttf at 13 pixels.
+$(GENERATED_ROOT)/fonts/%.sdf: tools/mkfont.py
+	@mkdir -p $(@D)
+	tools/mkfont.py $(FONT_SOURCE_DIR)/$(firstword $(subst -, ,$*))-$(word 2,$(subst -, ,$*)).ttf \
+	    $(word 3,$(subst -, ,$*)) $@
+
+# libgui before libc on the link line: a static library only resolves
+# symbols that are already undefined when the linker reaches it.
+USER_LINK_DEPS := $(CRT0) $(LIBGUI) $(LIBC) user/user.ld
 define link-user
 @mkdir -p $(@D)
-$(LD) $(USER_LDFLAGS) $(CRT0) $(filter-out $(USER_LINK_DEPS),$^) $(LIBC) -o $@
+$(LD) $(USER_LDFLAGS) $(CRT0) $(filter-out $(USER_LINK_DEPS),$^) $(LIBGUI) $(LIBC) -o $@
 endef
 
 $(BUILD)/user/bin/init: $(BUILD)/obj/user/init/init.o $(USER_LINK_DEPS)
@@ -248,8 +282,8 @@ $(BUILD)/user/bin/init: $(BUILD)/obj/user/init/init.o $(USER_LINK_DEPS)
 $(BUILD)/user/test/%: $(BUILD)/obj/user/tests/%.o $(USER_LINK_DEPS)
 	$(link-user)
 
-$(INITRAMFS): $(USER_PROGRAMS) $(shell find user/rootfs -type f) tools/mkinitramfs.sh
-	tools/mkinitramfs.sh $@ user/rootfs $(BUILD)/user $(STRIP)
+$(INITRAMFS): $(USER_PROGRAMS) $(FONTS) $(shell find user/rootfs -type f) tools/mkinitramfs.sh
+	tools/mkinitramfs.sh $@ $(STRIP) $(BUILD)/user user/rootfs $(GENERATED_ROOT)
 
 $(LIMINE_TOOL):
 	rm -rf $(LIMINE_DIR)
@@ -269,7 +303,7 @@ $(BUILD)/test-%.iso: $(ISO_DEPS)
 	tools/mkiso.sh $@ $(KERNEL) $(INITRAMFS) $(LIMINE_DIR) boot/limine.conf.in "test=$*"
 
 clean:
-	rm -rf $(BUILD)/obj $(KERNEL) $(BUILD)/*.iso $(BUILD)/*.log* $(BUILD)/user $(LIBC) $(INITRAMFS)
+	rm -rf $(BUILD)/obj $(KERNEL) $(BUILD)/*.iso $(BUILD)/*.log* $(BUILD)/user $(LIBC) $(LIBGUI) $(GENERATED_ROOT) $(INITRAMFS)
 
 distclean:
 	rm -rf $(BUILD)

@@ -34,6 +34,8 @@ static const syscall_handler_fn handlers[SYS_COUNT] = {
     [SYS_RECV] = sys_recv,
     [SYS_SHM_CREATE] = sys_shm_create,
     [SYS_SHM_MAP] = sys_shm_map,
+    [SYS_FB_INFO] = sys_fb_info,
+    [SYS_FB_MAP] = sys_fb_map,
 };
 
 int64_t kernel_syscall(uint64_t number, const uint64_t arguments[ARCH_SYSCALL_ARGUMENT_COUNT])

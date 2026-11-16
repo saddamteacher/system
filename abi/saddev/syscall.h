@@ -39,6 +39,8 @@ enum {
     SYS_RECV,       /* (int fd, void *buf, size_t capacity, int *handle_fd) -> message size, 0 if closed */
     SYS_SHM_CREATE, /* (size_t size)                            -> fd */
     SYS_SHM_MAP,    /* (int fd)                                 -> address */
+    SYS_FB_INFO,    /* (struct sd_fb_info *out)                 -> 0 */
+    SYS_FB_MAP,     /* ()                                       -> address of the display memory */
     SYS_COUNT
 };
 

@@ -44,5 +44,7 @@ int64_t sys_send(const uint64_t arguments[]);
 int64_t sys_recv(const uint64_t arguments[]);
 int64_t sys_shm_create(const uint64_t arguments[]);
 int64_t sys_shm_map(const uint64_t arguments[]);
+int64_t sys_fb_info(const uint64_t arguments[]);
+int64_t sys_fb_map(const uint64_t arguments[]);
 
 #endif

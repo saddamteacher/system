@@ -66,7 +66,7 @@ static const struct key_info key_table[KEY_CODE_COUNT] = {
 };
 
 static struct spinlock lock = SPINLOCK_INIT;
-static struct key_event queue[QUEUE_CAPACITY];
+static struct sd_key_event queue[QUEUE_CAPACITY];
 static size_t queue_head;  /* index of the oldest event */
 static size_t queue_count;
 static uint8_t modifiers;
@@ -150,9 +150,9 @@ void keyboard_report(enum key_code code, bool pressed)
      * recent key is less confusing than losing one typed long ago. */
     if (queue_count < QUEUE_CAPACITY) {
         size_t tail = (queue_head + queue_count) % QUEUE_CAPACITY;
-        queue[tail] = (struct key_event){
+        queue[tail] = (struct sd_key_event){
             .code = (uint16_t)code,
-            .pressed = pressed,
+            .pressed = pressed ? 1 : 0,
             .modifiers = modifiers,
             .character = character_for_key(code),
         };
@@ -181,14 +181,14 @@ bool keyboard_has_event(void)
     return available;
 }
 
-static void pop_event_locked(struct key_event *event)
+static void pop_event_locked(struct sd_key_event *event)
 {
     *event = queue[queue_head];
     queue_head = (queue_head + 1) % QUEUE_CAPACITY;
     queue_count--;
 }
 
-void keyboard_wait_event(struct key_event *event)
+void keyboard_wait_event(struct sd_key_event *event)
 {
     arch_irq_state_t irq_state = spinlock_acquire(&lock);
     while (queue_count == 0) {
@@ -198,7 +198,7 @@ void keyboard_wait_event(struct key_event *event)
     spinlock_release(&lock, irq_state);
 }
 
-bool keyboard_read_event(struct key_event *event)
+bool keyboard_read_event(struct sd_key_event *event)
 {
     arch_irq_state_t irq_state = spinlock_acquire(&lock);
 
@@ -211,7 +211,7 @@ bool keyboard_read_event(struct key_event *event)
     return available;
 }
 
-void keyboard_log_event(const struct key_event *event)
+void keyboard_log_event(const struct sd_key_event *event)
 {
     const char *action = event->pressed ? "pressed" : "released";
     const char *name = keyboard_key_name((enum key_code)event->code);

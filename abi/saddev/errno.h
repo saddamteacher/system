@@ -16,7 +16,9 @@
 #define EAGAIN       11  /* try again */
 #define ENOMEM       12  /* out of memory */
 #define EFAULT       14  /* bad address */
+#define EBUSY        16  /* in use by someone else */
 #define EEXIST       17  /* already exists */
+#define ENODEV       19  /* no such device */
 #define ENOTDIR      20  /* not a directory */
 #define EISDIR       21  /* is a directory */
 #define EINVAL       22  /* invalid argument */

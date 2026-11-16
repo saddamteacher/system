@@ -55,6 +55,11 @@ static volatile struct limine_module_request module_request = {
     .id = LIMINE_MODULE_REQUEST_ID,
 };
 
+LIMINE_SECTION(".limine_requests")
+static volatile struct limine_framebuffer_request framebuffer_request = {
+    .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
+};
+
 LIMINE_SECTION(".limine_requests_end")
 static volatile uint64_t requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
@@ -169,4 +174,27 @@ struct arch_boot_module arch_boot_module(size_t index)
         .size = file->size,
         .path = file->path,
     };
+}
+
+bool arch_boot_framebuffer(struct arch_boot_framebuffer *info)
+{
+    const struct limine_framebuffer_response *response = framebuffer_request.response;
+    if (response == NULL || response->framebuffer_count == 0) {
+        return false;
+    }
+    const struct limine_framebuffer *fb = response->framebuffers[0];
+    *info = (struct arch_boot_framebuffer){
+        .address = (uint64_t)(uintptr_t)fb->address - boot_hhdm_offset(),
+        .width = (uint32_t)fb->width,
+        .height = (uint32_t)fb->height,
+        .pitch = (uint32_t)fb->pitch,
+        .bits_per_pixel = fb->bpp,
+        /* 8 bits per channel with red in bits 16-23, green in 8-15 and
+         * blue in 0-7: the layout the rest of the system assumes. */
+        .is_xrgb8888 = fb->memory_model == LIMINE_FRAMEBUFFER_RGB && fb->bpp == 32
+                    && fb->red_mask_size == 8 && fb->red_mask_shift == 16
+                    && fb->green_mask_size == 8 && fb->green_mask_shift == 8
+                    && fb->blue_mask_size == 8 && fb->blue_mask_shift == 0,
+    };
+    return true;
 }

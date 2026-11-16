@@ -3,6 +3,7 @@
 #include <saddev/errno.h>
 #include <saddev/syscall.h>
 
+#include <drivers/framebuffer/framebuffer.h>
 #include <fs/poll.h>
 #include <fs/vfs.h>
 #include <ipc/channel.h>
@@ -234,4 +235,21 @@ int64_t sys_shm_map(const uint64_t arguments[])
     }
     uintptr_t address = shm_map(file, process_address_space(process_current()));
     return address != 0 ? (int64_t)address : -ENOMEM;
+}
+
+int64_t sys_fb_info(const uint64_t arguments[])
+{
+    struct sd_fb_info info;
+    if (!framebuffer_info(&info)) {
+        return -ENODEV;
+    }
+    return user_copy_out(arguments[0], &info, sizeof(info));
+}
+
+int64_t sys_fb_map(const uint64_t arguments[])
+{
+    (void)arguments;
+    int error = 0;
+    uintptr_t address = framebuffer_map(process_address_space(process_current()), &error);
+    return address != 0 ? (int64_t)address : error;
 }

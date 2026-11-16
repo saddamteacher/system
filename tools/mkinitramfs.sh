@@ -2,19 +2,22 @@
 # Builds the initial RAM file system: a ustar archive of everything user
 # space needs at boot.
 #
-# usage: mkinitramfs.sh <output.tar> <static-root> <programs-root> <strip-command>
+# usage: mkinitramfs.sh <output.tar> <strip-command> <programs-root> <static-root>...
 #
-#   static-root    directory copied as is (configuration and data files)
 #   programs-root  directory of built programs, laid out as in the archive
 #                  (bin/init, test/hello, ...); copied without debug info
+#   static-root    directories copied as they are (configuration, fonts)
 set -eu
 
-OUTPUT="$1"; STATIC_ROOT="$2"; PROGRAMS_ROOT="$3"; STRIP="$4"
+OUTPUT="$1"; STRIP="$2"; PROGRAMS_ROOT="$3"
+shift 3
 
 ROOT="$OUTPUT.root"
 rm -rf "$ROOT"
 mkdir -p "$ROOT"
-cp -R "$STATIC_ROOT/." "$ROOT/"
+for static_root in "$@"; do
+    cp -R "$static_root/." "$ROOT/"
+done
 
 # Debug information stays in the build tree, where GDB and addr2line can
 # use it; the copy that is loaded into memory at every boot goes without.

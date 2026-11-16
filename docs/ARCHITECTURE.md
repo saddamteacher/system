@@ -63,10 +63,14 @@ boot                             Limine config, linker script
 | `kernel/drivers/serial/` | 16550 UART driver |
 | `kernel/drivers/ps2/` | PS/2 controller (8042) driver |
 | `kernel/drivers/keyboard/` | key events and queue; PS/2 scancode decoder |
+| `kernel/drivers/mouse/` | mouse events and queue; PS/2 packet decoder |
+| `kernel/drivers/framebuffer/` | describes the display and maps it into one process |
 | `kernel/tests/` | in-kernel self-tests selected with `test=<name>` |
 | `libc/` | user C library; `libc/arch/x86_64` holds its few assembly files |
 | `user/` | `init`, test programs, `rootfs/` (static files), `user.ld` |
-| `tools/` | host setup, ISO and initramfs builders, serial check runner, QMP key injector, GDB script |
+| `user/libgui/` | 2D drawing: surfaces, shapes, blending, text |
+| `third_party/fonts/inter/` | the Inter typeface (SIL OFL 1.1), input to `tools/mkfont.py` |
+| `tools/` | host setup, ISO and initramfs builders, font atlas generator, serial check runner, QMP key injector and screenshot checker, GDB script |
 
 Two rules that follow from the layering and are easy to get wrong:
 
@@ -125,3 +129,4 @@ take spinlocks (which every other user holds with interrupts disabled).
 - [04 - Threads and scheduling](04-scheduling.md)
 - [05 - User space: processes, system calls, files, libc](05-userspace.md)
 - [06 - IPC: channels, ports, shared memory, poll](06-ipc.md)
+- [07 - Graphics base: display, mouse, drawing, text](07-graphics.md)

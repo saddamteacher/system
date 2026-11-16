@@ -1,6 +1,7 @@
 #ifndef ARCH_BOOT_H
 #define ARCH_BOOT_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -63,5 +64,20 @@ struct arch_boot_module {
 
 size_t arch_boot_module_count(void);
 struct arch_boot_module arch_boot_module(size_t index);
+
+/*
+ * The display the bootloader configured. `address` is physical device
+ * memory. Returns false if there is no display.
+ */
+struct arch_boot_framebuffer {
+    uint64_t address;
+    uint32_t width;
+    uint32_t height;
+    uint32_t pitch; /* bytes per row */
+    uint16_t bits_per_pixel;
+    bool is_xrgb8888; /* 32-bit pixels laid out as 0x00RRGGBB */
+};
+
+bool arch_boot_framebuffer(struct arch_boot_framebuffer *info);
 
 #endif
