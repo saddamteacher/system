@@ -88,6 +88,8 @@ int main(void)
                 dock_update();
             } else if (event.type == GUI_MSG_POINTER && dock_owns(event.window)) {
                 dock_handle_pointer(&event);
+            } else if (event.type == GUI_MSG_FRAME && dock_owns(event.window)) {
+                dock_handle_frame();
             }
         }
         /* Cheap when nothing changed: it compares before it draws. */

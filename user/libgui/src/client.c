@@ -164,6 +164,8 @@ struct gui_window *gui_window_create(struct gui_connection *connection, enum gui
     window->id = reply.window;
     window->width = width;
     window->height = height;
+    window->x = x;
+    window->y = y;
     gfx_surface_init(&window->surface, window->mapping, width, height, width);
     window->next = connection->windows;
     connection->windows = window;

@@ -44,6 +44,8 @@ int64_t menubar_time_until_update(void);
 bool dock_create(struct gui_connection *connection);
 /* Redraws the dock; call after the window model changed. */
 void dock_update(void);
+/* The dock's last drawing is on screen: draw the next animation step. */
+void dock_handle_frame(void);
 bool dock_owns(const struct gui_window *window);
 void dock_handle_pointer(const struct gui_event *event);
 

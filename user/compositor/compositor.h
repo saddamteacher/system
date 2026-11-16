@@ -50,6 +50,13 @@ struct window {
 
     bool visible;         /* false until the client's first commit */
     bool minimized;
+    /* An animation is standing in for the window (see anim.c): it exists
+     * and may have the focus, but is not drawn or hit by the pointer. */
+    bool animation_hidden;
+    /* Where the dock shows this window, as told by the shell: the place a
+     * minimize animation flies to. */
+    bool has_icon_rect;
+    struct gfx_rect icon_rect;
     bool frame_requested; /* owes the client a GUI_MSG_FRAME */
 
     /* Where the pointer can hit the window, relative to the content; the
@@ -90,8 +97,10 @@ int clients_poll_descriptors(struct sd_pollfd *descriptors, struct client **owne
 void client_service(struct client *client);
 void client_send(struct client *client, const struct gui_message *message);
 
-/* True if the window is currently drawn on screen. */
+/* True if the window is part of the scene: visible and not minimized. */
 bool window_is_shown(const struct window *window);
+/* True if it is actually drawn right now (not replaced by an animation). */
+bool window_is_drawn(const struct window *window);
 void window_raise(struct window *window);
 void window_focus(struct window *window);
 void window_move(struct window *window, int x, int y);
@@ -138,8 +147,8 @@ unsigned resize_edges_at(const struct window *window, int x, int y);
 struct window *window_at(int x, int y, enum hit_area *area);
 
 void decor_init(void);
-/* Draws the shadow and title bar of a window. */
-void decor_draw(struct gfx_surface *target, const struct window *window, bool focused);
+/* Draws the title bar of a window and, if asked, its shadow. */
+void decor_draw(struct gfx_surface *target, const struct window *window, bool focused, bool with_shadow);
 /* Copies a window's content with its bottom corners rounded off. */
 void decor_draw_content(struct gfx_surface *target, const struct window *window);
 
@@ -176,6 +185,21 @@ void input_handle_keyboard(void);
 void input_window_gone(struct window *window);
 struct gfx_rect cursor_rect(void);
 void cursor_draw(struct gfx_surface *target);
+
+/* -------------------------------------------------------- animations */
+
+void animations_set_scale(unsigned scale);
+bool animations_active(void);
+/* Moves every running animation to where it should be at `now_ns`. */
+void animations_update(uint64_t now_ns);
+void animations_draw(struct gfx_surface *target);
+void animate_open(struct window *window);
+/* Call before the window is destroyed: its picture is taken now. */
+void animate_close(struct window *window);
+/* Call before the window is marked minimized, for the same reason. */
+void animate_minimize(struct window *window);
+void animate_restore(struct window *window);
+void animations_window_gone(struct window *window);
 
 /* ------------------------------------------------------------- shell */
 

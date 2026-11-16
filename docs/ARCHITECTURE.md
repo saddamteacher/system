@@ -68,7 +68,7 @@ boot                             Limine config, linker script
 | `kernel/tests/` | in-kernel self-tests selected with `test=<name>` |
 | `libc/` | user C library; `libc/arch/x86_64` holds its few assembly files |
 | `user/` | `init`, test programs, `rootfs/` (static files), `user.ld` |
-| `user/libgui/` | 2D drawing (surfaces, shapes, blending, text), the window system protocol and its client library |
+| `user/libgui/` | 2D drawing (surfaces, shapes, blending, text, blur, scaling), animation (easing, tweens, springs), the window system protocol and its client library |
 | `user/compositor/` | the window server |
 | `user/desktop/` | the desktop shell: wallpaper, menu bar, dock |
 | `third_party/fonts/inter/` | the Inter typeface (SIL OFL 1.1), input to `tools/mkfont.py` |
@@ -134,3 +134,4 @@ take spinlocks (which every other user holds with interrupts disabled).
 - [07 - Graphics base: display, mouse, drawing, text](07-graphics.md)
 - [08 - The window server](08-compositor.md)
 - [09 - The desktop](09-desktop.md)
+- [10 - Animations](10-animations.md)

@@ -13,6 +13,11 @@ float ceilf(float x);
 float roundf(float x);
 long lroundf(float x);
 float fminf(float a, float b);
+/* Angles in radians. Accurate to about 1e-6. */
+float sinf(float x);
+float cosf(float x);
+
+#define M_PI 3.14159265358979323846
 float fmaxf(float a, float b);
 
 #endif

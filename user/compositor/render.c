@@ -114,7 +114,7 @@ static void draw_frosted(const struct window *window, struct gfx_rect area)
 static void draw_window(const struct window *window)
 {
     if (window->kind == GUI_WINDOW_NORMAL) {
-        decor_draw(&back_buffer, window, window == focused_window);
+        decor_draw(&back_buffer, window, window == focused_window, true);
         decor_draw_content(&back_buffer, window);
         return;
     }
@@ -154,10 +154,12 @@ static void compose(struct gfx_rect area)
     /* Painter's algorithm: bottom to top, each window over what is below. */
     for (int i = 0; i < window_stack_count; i++) {
         const struct window *window = window_stack[i];
-        if (window_is_shown(window) && !gfx_rect_is_empty(gfx_rect_intersect(window_visual_rect(window), area))) {
+        if (window_is_drawn(window) && !gfx_rect_is_empty(gfx_rect_intersect(window_visual_rect(window), area))) {
             draw_window(window);
         }
     }
+    /* Animated stand-ins fly over everything, the dock included. */
+    animations_draw(&back_buffer);
     cursor_draw(&back_buffer);
 
     gfx_reset_clip(&back_buffer);

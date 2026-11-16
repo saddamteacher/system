@@ -39,6 +39,11 @@ bool window_is_shown(const struct window *window)
     return window->visible && !window->minimized;
 }
 
+bool window_is_drawn(const struct window *window)
+{
+    return window_is_shown(window) && !window->animation_hidden;
+}
+
 /* -------------------------------------------------------------- shell */
 
 void shell_notify(const struct window *window)
@@ -164,6 +169,7 @@ void window_minimize(struct window *window)
     if (window->minimized) {
         return;
     }
+    animate_minimize(window);
     damage_add(window_visual_rect(window));
     window->minimized = true;
     input_window_gone(window);
@@ -180,6 +186,7 @@ static void window_restore(struct window *window)
     if (window->minimized) {
         window->minimized = false;
         compositor_log("window %u restored", window->id);
+        animate_restore(window);
     }
     window_raise(window);
     window_focus(window);
@@ -190,7 +197,7 @@ struct window *window_at(int x, int y, enum hit_area *area)
 {
     for (int i = window_stack_count - 1; i >= 0; i--) {
         struct window *window = window_stack[i];
-        if (!window_is_shown(window)) {
+        if (!window_is_drawn(window)) {
             continue;
         }
         enum hit_area hit = window_hit_test(window, x, y);
@@ -351,7 +358,11 @@ static struct window *find_any_window(uint32_t id)
 
 static void window_destroy(struct window *window)
 {
+    animations_window_gone(window);
     if (window_is_shown(window)) {
+        if (window->kind == GUI_WINDOW_NORMAL) {
+            animate_close(window); /* takes its picture while it still exists */
+        }
         damage_add(window_visual_rect(window));
     }
     input_window_gone(window);
@@ -496,6 +507,9 @@ static void handle_commit(struct window *window, const struct gui_message *reque
         if (can_focus(window)) {
             window_focus(window);
         }
+        if (window->kind == GUI_WINDOW_NORMAL) {
+            animate_open(window); /* after focusing: the picture shows the focused look */
+        }
         shell_notify(window);
     } else if (!window->minimized) {
         damage_add(gfx_rect_make(window->x + area.x, window->y + area.y, area.width, area.height));
@@ -552,8 +566,14 @@ static bool handle_message(struct client *client, const struct gui_message *mess
     case GUI_MSG_SHELL_ICON_RECT: {
         /* Only the shell may act on windows that are not its own. */
         struct window *target = client == shell_client ? find_any_window(message->window) : NULL;
-        if (target != NULL && target->kind == GUI_WINDOW_NORMAL && message->type == GUI_MSG_SHELL_ACTIVATE) {
+        if (target == NULL || target->kind != GUI_WINDOW_NORMAL) {
+            return true;
+        }
+        if (message->type == GUI_MSG_SHELL_ACTIVATE) {
             window_restore(target);
+        } else {
+            target->has_icon_rect = true;
+            target->icon_rect = region_from(message);
         }
         return true;
     }

@@ -84,6 +84,16 @@ bool test_user_compositor(void)
     return run_program("/test/wm-session", NULL, 0);
 }
 
+bool test_user_animations(void)
+{
+    return run_program("/test/desktop-session", "slow", 0);
+}
+
+bool test_user_anim(void)
+{
+    return run_program("/test/anim", NULL, 0);
+}
+
 bool test_user_desktop(void)
 {
     return run_program("/test/desktop-session", NULL, 0);

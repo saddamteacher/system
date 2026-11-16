@@ -133,7 +133,8 @@ replace them in Phase 11.
 
 ## Known limits
 
-- Minimize, restore and zoom happen instantly; animating them is Phase 10.
+- Zoom happens in one step; open, close, minimize and restore are animated
+  (see [10-animations.md](10-animations.md)).
 - Menus are not implemented: the bar shows the application name only.
 - Resizing works from the right and bottom edges, not the left or top.
 - The blur treats the panel's rectangle as its edge, so colours from just

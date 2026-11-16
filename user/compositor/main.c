@@ -4,6 +4,7 @@
  * usage: compositor [--test] [--stats]
  *   --test   log window and pointer activity; F12 quits
  *   --stats  log frame statistics once per second
+ *   --animation-scale=N  make window animations N times slower
  */
 #include "compositor.h"
 
@@ -114,6 +115,9 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         option_test_mode |= strcmp(argv[i], "--test") == 0;
         option_stats |= strcmp(argv[i], "--stats") == 0;
+        if (strncmp(argv[i], "--animation-scale=", 18) == 0) {
+            animations_set_scale((unsigned)atoi(argv[i] + 18));
+        }
     }
 
     if (!render_init() || !input_init()) {
@@ -141,7 +145,7 @@ int main(int argc, char **argv)
 
         /* With nothing to draw there is no frame to wait for: sleep until
          * something happens. */
-        bool frame_needed = damage_pending() || windows_any_frame_requested();
+        bool frame_needed = damage_pending() || windows_any_frame_requested() || animations_active();
         int64_t timeout = frame_needed ? timeout_until(next_frame_ns) : -1;
 
         int ready = poll_fds(descriptors, (size_t)(3 + client_count), timeout);
@@ -162,7 +166,7 @@ int main(int argc, char **argv)
             }
         }
 
-        frame_needed = damage_pending() || windows_any_frame_requested();
+        frame_needed = damage_pending() || windows_any_frame_requested() || animations_active();
         uint64_t now = clock_ns();
         if (!frame_needed) {
             /* Idle: the next change is shown immediately, not at a frame
@@ -177,6 +181,7 @@ int main(int argc, char **argv)
             continue;
         }
 
+        animations_update(now);
         render_frame();
         uint64_t finished = clock_ns();
         windows_send_frame_events(finished / NS_PER_MS);

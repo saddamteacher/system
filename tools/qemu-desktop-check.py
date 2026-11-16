@@ -88,7 +88,10 @@ def main():
                    "Alpha to start from the dock")
     wait_for(log_path, lambda text: "desktop: active application is Alpha" in text,
              "the menu bar to show the new application")
-    time.sleep(0.5)
+    # Off the dock, so its icons are back at their resting size and place.
+    pointer.move_to(900, 300)
+    wait_for(log_path, lambda text: "bounce finished for Alpha" in text, "the launch bounce to end")
+    time.sleep(0.8)
     alpha = window_named(read_log(log_path), "Alpha")
     colours = {title: dict(marker=hex_color(marker), background=hex_color(background))
                for title, marker, background in
@@ -147,17 +150,18 @@ def main():
              or "active application is Saddev" in text.split("minimized")[-1],
              "the menu bar to fall back to the default name")
     pointer.move_to(900, 300)
-    time.sleep(0.4)
+    time.sleep(1.0)  # the minimize animation takes a third of a second
     hidden = qmp.screenshot(prefix, "4-minimized")
     if hidden.getpixel(marker_at) == colours["Alpha"]["marker"]:
         fail("the minimized window is still on screen")
     if not luminance(hidden.getpixel(dot)) < luminance(empty.getpixel(dot)) - 40:
         fail("the dock lost the indicator of a minimized application")
     pointer.move_to(*icon_centers[0])
+    time.sleep(0.6)  # the icons shift as they grow; let them settle
     pointer.click()
     wait_for(log_path, lambda text: f"window {alpha['id']} restored" in text, "Alpha to be restored from the dock")
     pointer.move_to(900, 300)
-    time.sleep(0.4)
+    time.sleep(1.0)
     restored = qmp.screenshot(prefix, "5-restored")
     if restored.getpixel(marker_at) != colours["Alpha"]["marker"]:
         fail("the restored window is not back where it was")

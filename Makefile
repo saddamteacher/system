@@ -176,9 +176,9 @@ endef
 # Tests that only need to report success.
 PASS_TESTS  := printf cmdline bitmap list pmm vmm heap threads sleep mutex timed-wait thread-churn \
                boot user-hello user-syscalls user-files user-malloc user-spawn user-fpu \
-               user-sleep user-fault user-churn user-ipc user-ipc-edge
+               user-sleep user-fault user-churn user-ipc user-ipc-edge user-anim
 # Tests with their own expectations, written out below.
-OTHER_TESTS := timer keyboard user-gfx user-compositor user-desktop breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
+OTHER_TESTS := timer keyboard user-gfx user-compositor user-desktop user-animations breakpoint divide-by-zero page-fault write-rodata use-after-unmap stack-overflow
 
 CHECKS := $(PASS_TESTS) $(OTHER_TESTS)
 .PHONY: check $(CHECKS:%=check-%)
@@ -225,6 +225,15 @@ check-user-desktop: $(BUILD)/test-user-desktop.iso
 	@CHECK_SIDECAR="tools/qemu-desktop-check.py $(DESKTOP_QMP) $(BUILD)/check-user-desktop.log $(BUILD)/desktop" \
 	    $(call run-check,user-desktop,$<,pass,'desktop: ready' 'compositor: exiting' \
 	    "test: 'user-desktop' passed",-qmp unix:$(DESKTOP_QMP)$(comma)server=on$(comma)wait=off)
+
+# Window and dock animations, slowed down so each can be photographed
+# half-way through (tools/qemu-anim-check.py).
+ANIM_QMP := $(BUILD)/check-user-animations.qmp
+check-user-animations: CHECK_TIMEOUT := 150
+check-user-animations: $(BUILD)/test-user-animations.iso
+	@CHECK_SIDECAR="tools/qemu-anim-check.py $(ANIM_QMP) $(BUILD)/check-user-animations.log $(BUILD)/anim" \
+	    $(call run-check,user-animations,$<,pass,'desktop: ready' 'compositor: exiting' \
+	    "test: 'user-animations' passed",-qmp unix:$(ANIM_QMP)$(comma)server=on$(comma)wait=off)
 
 # The handler must return to the interrupted code, so the test still passes.
 check-breakpoint: $(BUILD)/test-breakpoint.iso

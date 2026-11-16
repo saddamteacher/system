@@ -1,11 +1,12 @@
 /*
  * Starts the window server and the desktop shell, and waits for the server
- * to end. Used by the desktop check; tools/qemu-desktop-check.py drives the
+ * to end. Used by the desktop and animation checks, whose scripts drive the
  * session from outside.
  */
 #include <gui/protocol.h>
 #include <ipc.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 static int wait_for_server(void)
@@ -21,9 +22,14 @@ static int wait_for_server(void)
     return 0;
 }
 
-int main(void)
+/* With the argument "slow", window animations run six times slower, so
+ * that a check can look at them half-way through. */
+int main(int argc, char **argv)
 {
-    char *compositor[] = { "/bin/compositor", "--test", "--stats", NULL };
+    char *compositor[] = { "/bin/compositor", "--test", "--stats", NULL, NULL };
+    if (argc > 1 && strcmp(argv[1], "slow") == 0) {
+        compositor[3] = "--animation-scale=6";
+    }
     char *desktop[] = { "/bin/desktop", NULL };
 
     int server = spawn(compositor[0], compositor);

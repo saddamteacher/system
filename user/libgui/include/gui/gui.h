@@ -22,6 +22,9 @@ struct gui_window {
     uint32_t id;
     struct gfx_surface surface; /* draw here */
     int width, height;
+    /* Where the window was asked to be placed at creation. The server may
+     * adjust it, and the user may move it; this is not kept up to date. */
+    int x, y;
     /* True between a commit that asked for a frame event and that event.
      * While it is set the server may be reading the surface: do not draw. */
     bool frame_pending;

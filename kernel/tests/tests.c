@@ -41,6 +41,8 @@ static const struct test_case test_cases[] = {
     { "user-gfx", test_user_gfx },
     { "user-compositor", test_user_compositor },
     { "user-desktop", test_user_desktop },
+    { "user-anim", test_user_anim },
+    { "user-animations", test_user_animations },
     { "breakpoint", test_breakpoint },
     { "divide-by-zero", test_divide_by_zero },
     { "page-fault", test_page_fault },

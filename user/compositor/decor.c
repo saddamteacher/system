@@ -276,12 +276,14 @@ static void draw_title(struct gfx_surface *target, const struct window *window, 
     target->clip = saved_clip;
 }
 
-void decor_draw(struct gfx_surface *target, const struct window *window, bool focused)
+void decor_draw(struct gfx_surface *target, const struct window *window, bool focused, bool with_shadow)
 {
     if (!is_decorated(window)) {
         return;
     }
-    draw_shadow(target, window_frame_rect(window), focused);
+    if (with_shadow) {
+        draw_shadow(target, window_frame_rect(window), focused);
+    }
 
     struct gfx_rect bar = gfx_rect_make(window->x, window->y - TITLE_BAR_HEIGHT, window->width, TITLE_BAR_HEIGHT);
     gfx_color color = focused ? COLOR_TITLE_FOCUSED : COLOR_TITLE_UNFOCUSED;
